@@ -10,6 +10,7 @@ class VideoJob(models.Model):
     ]
     
     file_name = models.CharField(max_length=255)
+    fps = models.PositiveIntegerField(default=30)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     current_script = models.CharField(max_length=255, blank=True)
     progress = models.IntegerField(default=0)

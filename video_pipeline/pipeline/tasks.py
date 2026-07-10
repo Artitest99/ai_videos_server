@@ -5,9 +5,10 @@ from pathlib import Path
 from .models import VideoJob
 from django.utils import timezone
 
-def run_video_pipeline(job_id, fps='30'):
+def run_video_pipeline(job_id, fps='30', start_script=None):
     job = VideoJob.objects.get(id=job_id)
     job.status = 'running'
+    job.completed_at = None
     job.save()
     
     # Path to .env file
@@ -37,9 +38,18 @@ def run_video_pipeline(job_id, fps='30'):
     ]
     
     total_scripts = len(scripts)
+
+    start_index = 0
+    if start_script is not None:
+        if start_script not in scripts:
+            job.status = 'failed'
+            job.log += f"X Cannot retry from unknown pipeline step: {start_script}.\n"
+            job.save()
+            return
+        start_index = scripts.index(start_script)
     
     # Run each script
-    for idx, script in enumerate(scripts):
+    for idx, script in enumerate(scripts[start_index:], start=start_index):
         job.current_script = script
         job.progress = int((idx / total_scripts) * 100)
         job.save()
@@ -50,7 +60,6 @@ def run_video_pipeline(job_id, fps='30'):
         try:
             # Special handling for create_video.py to track progress
             if script == "create_video.py":
-                import sys
                 import select
                 process = subprocess.Popen(
                     [sys.executable, "-u", str(base_dir / script)],

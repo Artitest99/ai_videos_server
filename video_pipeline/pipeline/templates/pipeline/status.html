@@ -100,7 +100,7 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        .download-btn {
+        .download-btn, .retry-btn {
             display: inline-block;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -110,11 +110,32 @@
             font-size: 16px;
             font-weight: 600;
             transition: transform 0.2s, box-shadow 0.2s;
+            border: 0;
+            cursor: pointer;
         }
-        .download-btn:hover {
+        .download-btn:hover, .retry-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
         }
+        .video-preview { margin-top: 28px; text-align: center; }
+        .video-preview video {
+            display: block;
+            width: min(100%, 420px);
+            max-height: 70vh;
+            margin: 14px auto 22px;
+            border-radius: 12px;
+            background: #111;
+            box-shadow: 0 12px 30px rgba(0,0,0,0.22);
+        }
+        .failure-actions {
+            margin-top: 28px;
+            padding: 20px;
+            border-radius: 10px;
+            background: #fff3f3;
+            border: 1px solid #f3c2c2;
+            text-align: center;
+        }
+        .failure-actions p { color: #7a3232; margin: 0 0 14px; }
     </style>
 </head>
 <body>
@@ -143,10 +164,24 @@
             <div class="log-container" id="log-container">{{ job.log|default:"Waiting to start..." }}</div>
             
             {% if job.status == 'completed' %}
-            <div style="margin-top: 30px; text-align: center;">
+            <div class="video-preview">
+                <h3>Your video is ready</h3>
+                <video controls preload="metadata" src="{% url 'watch_video' job.id %}">
+                    Your browser cannot play this video.
+                </video>
                 <a href="{% url 'download_video' job.id %}" class="download-btn">
-                    ⬇ Download Video
+                    Download Video
                 </a>
+            </div>
+            {% endif %}
+
+            {% if job.status == 'failed' and job.current_script %}
+            <div class="failure-actions">
+                <p>The job stopped during <strong>{{ job.current_script }}</strong>. Earlier successful steps will be kept.</p>
+                <form method="post" action="{% url 'retry_job' job.id %}">
+                    {% csrf_token %}
+                    <button type="submit" class="retry-btn">Re-run from failed step</button>
+                </form>
             </div>
             {% endif %}
         </div>

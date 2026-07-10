@@ -18,6 +18,46 @@ This document translates the product vision into an implementation plan for evol
 
 External action still required: rotate the previously exposed ElevenLabs and Runware keys in their provider dashboards, then add the replacement values to the local `.env`. This cannot be completed through source changes alone.
 
+### Foundation slice 2 — implemented July 10, 2026
+
+- Added server-side validation for safe project names and FPS bounds.
+- Added JSON parsing with line/column errors and prompt schema validation.
+- Enforced one image prompt per script scene.
+- Added upload index, extension, and 500 MB size validation.
+- Prevented reuse of an existing legacy project name to avoid stale asset collisions.
+- Preserved submitted values and displayed actionable form errors in the browser.
+- Canonicalized validated prompt JSON before saving it.
+- Removed duplicate Django status view definitions.
+- Expanded the regression suite from five to eleven passing tests.
+
+The validated raw JSON field remains a temporary compatibility interface for the current legacy pipeline. It must be removed from the user-facing product during the guided project-creation stage below.
+
+### Guided creation slice 1 — implemented July 10, 2026
+
+- Replaced the user-facing script and raw prompt JSON fields with friendly scene cards.
+- Added per-scene narration, plain-language visual description, and optional image/video upload controls.
+- Added scene creation, removal, reordering, automatic numbering, and a `Use narration` prompt helper.
+- Hid `###`, `.txt`, `.json`, filesystem paths, and numbered media concepts from the user.
+- Added backend validation for the structured scene payload and a 100-scene safety limit.
+- Added backend compatibility generation of legacy script and prompt files so the existing pipeline still runs.
+- Preserved scene-card content after validation errors.
+- Added UI and compatibility tests, increasing the suite from eleven to thirteen passing tests.
+- Verified the rendered creator and dynamic scene interactions in a browser with no console errors.
+
+Still pending within Assignment 2.0: AI-assisted script generation, AI-assisted prompt generation, scene splitting/merging, and draft autosave. The current `Use narration` helper is intentionally local and does not call an AI provider.
+
+### Job recovery and output slice — implemented July 10, 2026
+
+- Added an inline video player to successful job pages while retaining MP4 download.
+- Added a protected inline video-serving endpoint for completed jobs.
+- Persisted the requested FPS on each job through a database migration.
+- Added a failed-job action to re-run from the recorded failed pipeline script.
+- Retry preserves earlier successful artifacts, appends a visible retry marker to the log, and continues through remaining stages.
+- Restricted retry to failed jobs with a known step; completed jobs cannot be retried through this action.
+- Added regression coverage for inline output, retry state, saved FPS, and starting the pipeline at a requested script.
+- Expanded the automated suite from fourteen to nineteen passing tests.
+- Verified successful and failed job-detail states in a browser without triggering a real retry.
+
 The target experience is:
 
 1. A user creates a video project from a script.
@@ -42,6 +82,22 @@ The first supported editing and rendering format is vertical 1080x1920. Aspect r
 ### Editing model
 
 The product is a guided, scene-based editor with a timeline, not a completely free-form professional NLE. Each scene has one primary visual, timing, crop, motion/effect, and outgoing transition. This boundary should be preserved unless a later product decision deliberately expands the scope.
+
+### Non-technical creation experience
+
+The product interface is designed for a non-technical person. Users must never need to create, upload, paste, or understand `script.txt`, `prompt.json`, raw JSON, filesystem paths, numbered media files, or `###` marker syntax.
+
+Project creation happens through friendly UI workflows:
+
+- Write or paste a topic/script into a normal text editor, or ask AI to generate the script.
+- Let the application suggest scene boundaries, or add/remove/reorder scenes using scene cards.
+- Generate an image prompt for every scene automatically from its narration and context.
+- View and edit each prompt as ordinary text on the corresponding scene card.
+- Regenerate a single prompt or all prompts without editing JSON.
+- Generate scene media from the prompt with a clear button and visible progress.
+- Upload or select replacement media without dealing with asset filenames.
+
+The frontend sends structured project, scene, and prompt data to the backend API. Any legacy `.txt` or `.json` files required during migration are generated internally by backend compatibility code and remain invisible to the user.
 
 ### Master timeline
 
@@ -300,6 +356,33 @@ Ensure a render uses one consistent version even if the user keeps editing.
 
 # Phase 2 — Build a durable generation pipeline
 
+## Assignment 2.0 — Replace raw file inputs with guided project creation
+
+### Goal
+
+Let a non-technical user create the complete initial video structure from the UI without providing script files, prompt files, JSON, or marker syntax.
+
+### Work
+
+- Replace the current filename/script/JSON form with a short project-creation wizard.
+- Step 1: ask for a project title and either a topic/idea or existing narration text.
+- Step 2: offer `Generate script with AI`, `Improve my script`, and `Use my text` actions.
+- Step 3: show proposed scene cards containing each scene's narration; allow add, remove, split, merge, edit, and reorder.
+- Step 4: generate a suggested visual prompt for every scene from the scene narration plus nearby context.
+- Show prompts as editable ordinary text, never JSON.
+- Add `Regenerate prompt` per scene and `Regenerate all prompts` with confirmation.
+- Step 5: let the user generate AI media, upload media, or continue with placeholders on each scene.
+- Save wizard progress automatically so the user can leave and continue later.
+- Generate any temporary legacy `.txt` and `.json` compatibility artifacts on the backend until the old scripts have been fully replaced.
+
+### Acceptance criteria
+
+- A first-time user can create scenes, prompts, and generated media without seeing or entering JSON, filenames, paths, or `###`.
+- Every scene can be created and edited independently through visible controls.
+- AI script and prompt generation are optional; users can write or correct all text manually.
+- The backend receives validated structured data rather than trusting frontend-generated files.
+- The wizard can resume after a page refresh without losing completed work.
+
 ## Assignment 2.1 — Add a real background job queue
 
 ### Goal
@@ -349,8 +432,10 @@ Turn narration into a useful editable first draft.
 
 ### Work
 
-- Parse explicit `###` scene markers when present.
-- Add optional automatic scene segmentation for scripts without markers.
+- Accept ordered scene records created by the guided UI as the normal input.
+- Retain `###` parsing only as a temporary legacy-import compatibility path, not as a user-facing workflow.
+- Add automatic scene segmentation for users who enter one continuous script.
+- Let users review and modify proposed scene boundaries before paid generation starts.
 - Map word alignment to subtitle cues and scene timing.
 - Preserve punctuation and original wording.
 - Create default subtitle groups based on readable line length and duration, not a fixed two words only.
@@ -360,7 +445,7 @@ Turn narration into a useful editable first draft.
 
 - Every point on the narration timeline belongs to a scene.
 - Subtitles are readable, editable, and synchronized to narration.
-- Explicit markers remain authoritative unless the user requests automatic re-segmentation.
+- User-approved scene cards remain authoritative unless the user explicitly requests automatic re-segmentation.
 
 ## Assignment 2.4 — Generate and attach scene media
 
@@ -370,7 +455,8 @@ Create one suggested visual per scene while allowing replacement.
 
 ### Work
 
-- Store a prompt per scene.
+- Store an editable plain-text prompt per scene.
+- Generate a default prompt from scene narration/context through a provider adapter.
 - Generate images through a provider adapter interface.
 - Attach generated assets directly to their scene instead of copying numbered files.
 - Show generation state and errors on individual scenes.
@@ -381,6 +467,7 @@ Create one suggested visual per scene while allowing replacement.
 
 - Scene-to-media relationships do not depend on filenames or directory ordering.
 - Replacing one scene does not regenerate or reorder other scenes.
+- No prompt workflow requires raw JSON input or knowledge of prompt files.
 
 ## Assignment 2.5 — Add proxy generation and media inspection
 
@@ -555,13 +642,17 @@ Let users organize and retime video structure.
 - Select, reorder, split, duplicate, and delete scenes.
 - Adjust a scene boundary while maintaining a valid continuous timeline.
 - Replace scene media from upload, generated alternatives, or the asset library.
-- Edit the prompt and regenerate a single scene image.
+- Show each scene's narration and visual prompt in friendly labeled fields.
+- Edit the prompt as ordinary text and regenerate a single prompt or scene image.
+- Generate a missing prompt directly from the scene narration.
+- Provide clear empty states and primary actions such as `Generate visual`, `Upload media`, and `Choose from library`.
 - Show scene duration and warnings for insufficient video source duration.
 
 ### Acceptance criteria
 
 - Reordering updates timeline order without losing scene settings.
 - No edit creates overlaps, negative duration, or uncovered narration time unless explicitly supported.
+- Scene creation and media generation require no knowledge of internal files or data formats.
 
 ---
 
@@ -937,7 +1028,7 @@ Complete Phases 0–2. A user can create multiple isolated projects, generate vo
 
 ## Milestone B — First useful editor
 
-Complete Phase 3, Assignments 4.1–4.4, 6.1, 7.1, 8.1, 8.2, and 9.1. A user can view scenes, replace/reorder media, correct subtitle text, select deterministic transitions, choose music, and render.
+Complete Assignment 2.0, Phase 3, Assignments 4.1–4.4, 6.1, 7.1, 8.1, 8.2, and 9.1. A non-technical user can create or generate a script, approve scene cards, generate/edit prompts, generate or replace media, correct subtitle text, select deterministic transitions, choose music, and render without seeing raw JSON or internal files.
 
 ## Milestone C — Uploaded video editing
 
