@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit {{ job.file_name }}</title>
+    <style>
+        :root { --ink:#172033; --muted:#69748a; --line:#dfe4ee; --soft:#f5f7fb; --primary:#6558e8; --danger:#a52a25; }
+        * { box-sizing:border-box; }
+        body { margin:0; background:#eef1f8; color:var(--ink); font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif; }
+        button,input,textarea { font:inherit; }
+        .page { max-width:1180px; margin:auto; padding:36px 22px 80px; }
+        .top { display:flex; justify-content:space-between; gap:20px; align-items:flex-start; margin-bottom:24px; }
+        h1 { margin:6px 0; font-size:36px; }
+        .back { color:var(--primary); text-decoration:none; font-weight:700; }
+        .muted { color:var(--muted); }
+        .notice,.errors { padding:14px 16px; border-radius:10px; margin:16px 0; }
+        .notice { background:#ecfdf3; border:1px solid #a9e8c1; color:#17663a; }
+        .errors { background:#fff1f0; border:1px solid #f0b8b3; color:var(--danger); }
+        .actions { display:flex; gap:10px; flex-wrap:wrap; }
+        .btn { border:0; border-radius:10px; padding:12px 17px; font-weight:750; cursor:pointer; text-decoration:none; display:inline-block; }
+        .primary { color:white; background:var(--primary); }
+        .secondary { color:#4e42c4; background:#ebe9ff; }
+        .scenes { display:grid; gap:18px; }
+        .scene { background:white; border:1px solid rgba(23,32,51,.1); border-radius:16px; box-shadow:0 12px 35px rgba(42,48,78,.08); overflow:hidden; }
+        .scene-title { padding:13px 18px; background:var(--soft); border-bottom:1px solid var(--line); font-weight:800; }
+        .scene-grid { display:grid; grid-template-columns:260px 1fr; gap:20px; padding:20px; }
+        .preview { aspect-ratio:9/16; width:100%; background:#131722; border-radius:11px; overflow:hidden; display:grid; place-items:center; }
+        .preview img,.preview video { width:100%; height:100%; object-fit:cover; }
+        .no-media { color:white; padding:20px; text-align:center; }
+        .fields { display:grid; gap:16px; }
+        label { display:block; font-weight:750; margin-bottom:7px; }
+        textarea { width:100%; min-height:92px; resize:vertical; border:1px solid var(--line); border-radius:10px; padding:12px; line-height:1.45; }
+        textarea:focus,input:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(101,88,232,.13); }
+        .locked { padding:12px; background:var(--soft); border-radius:10px; color:#3c465b; line-height:1.5; }
+        .hint { margin:6px 0 0; color:var(--muted); font-size:13px; }
+        .footer { position:sticky; bottom:16px; margin-top:24px; padding:16px; background:rgba(255,255,255,.96); border:1px solid var(--line); border-radius:14px; box-shadow:0 10px 32px rgba(30,35,65,.16); display:flex; justify-content:space-between; align-items:center; gap:16px; }
+        @media(max-width:760px){ .scene-grid{grid-template-columns:1fr}.preview{max-width:280px;margin:auto}.top,.footer{flex-direction:column;align-items:stretch} }
+    </style>
+</head>
+<body>
+<main class="page">
+    <div class="top">
+        <div>
+            <a class="back" href="{% url 'job_status' job.id %}">← Back to video</a>
+            <h1>Edit {{ job.file_name }}</h1>
+            <div class="muted">Revision {{ job.current_revision }} · The current voiceover and timing stay unchanged.</div>
+        </div>
+        {% if job.render_required %}
+        <form method="post" action="{% url 'render_edits' job.id %}">
+            {% csrf_token %}
+            <button class="btn primary" type="submit">
+                {% if job.render_start_script == 'generate_images_runaware.py' %}Generate new images and render{% else %}Render updated video{% endif %}
+            </button>
+        </form>
+        {% endif %}
+    </div>
+
+    {% if saved %}<div class="notice">Your edits were saved. Render the updated video when you are ready.</div>{% endif %}
+    {% if job.render_required and job.render_start_script == 'generate_images_runaware.py' %}
+    <div class="notice">A visual description changed. The next render will generate a new AI image for that scene before rebuilding the video.</div>
+    {% endif %}
+    {% if load_error %}<div class="errors">This older project cannot be edited yet: {{ load_error }}</div>{% endif %}
+    {% if errors %}<div class="errors"><strong>Please review these items:</strong><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% endif %}
+
+    {% if scenes %}
+    <form method="post" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="scenes">
+            {% for scene in scenes %}
+            <section class="scene">
+                <div class="scene-title">Scene {{ scene.number }}</div>
+                <div class="scene-grid">
+                    <div>
+                        <div class="preview">
+                            {% if scene.media_name %}
+                                {% if scene.media_name|lower|slice:"-4:" == ".mp4" or scene.media_name|lower|slice:"-4:" == ".mov" %}
+                                <video controls preload="metadata" src="{% url 'scene_media' job.id scene.index %}"></video>
+                                {% else %}
+                                <img src="{% url 'scene_media' job.id scene.index %}" alt="Scene {{ scene.number }} media">
+                                {% endif %}
+                            {% else %}<div class="no-media">No scene media</div>{% endif %}
+                        </div>
+                        <label style="margin-top:12px" for="media_{{ scene.index }}">Replace image or video</label>
+                        <input id="media_{{ scene.index }}" name="media_{{ scene.index }}" type="file" accept="image/*,video/*">
+                        <p class="hint">Replacing media does not change audio, subtitles, or scene timing.</p>
+                    </div>
+                    <div class="fields">
+                        <div>
+                            <label>Spoken narration</label>
+                            <div class="locked">{{ scene.narration }}</div>
+                            <p class="hint">Locked for now because changing it requires voiceover regeneration.</p>
+                        </div>
+                        <div>
+                            <label for="prompt_{{ scene.index }}">Visual description</label>
+                            <textarea id="prompt_{{ scene.index }}" name="prompt_{{ scene.index }}" required>{{ scene.prompt }}</textarea>
+                        </div>
+                        <div>
+                            <label for="subtitle_{{ scene.index }}">On-screen subtitles</label>
+                            <textarea id="subtitle_{{ scene.index }}" name="subtitle_{{ scene.index }}" required>{{ scene.subtitle_text }}</textarea>
+                            <p class="hint">Correct words only. Keep {{ scene.subtitle_word_count }} words so timing remains synchronized with the existing voiceover.</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            {% endfor %}
+        </div>
+        <div class="footer">
+            <span class="muted">Saving creates a new revision. Your current MP4 remains available until you render.</span>
+            <button class="btn primary" type="submit">Save edits</button>
+        </div>
+    </form>
+    {% endif %}
+</main>
+</body>
+</html>

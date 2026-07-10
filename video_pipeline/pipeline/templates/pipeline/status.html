@@ -100,7 +100,7 @@
             0% { transform: rotate(0deg); }
             100% { transform: rotate(360deg); }
         }
-        .download-btn, .retry-btn {
+        .download-btn, .retry-btn, .edit-btn {
             display: inline-block;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
@@ -113,7 +113,7 @@
             border: 0;
             cursor: pointer;
         }
-        .download-btn:hover, .retry-btn:hover {
+        .download-btn:hover, .retry-btn:hover, .edit-btn:hover {
             transform: translateY(-2px);
             box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
         }
@@ -171,6 +171,9 @@
                 </video>
                 <a href="{% url 'download_video' job.id %}" class="download-btn">
                     Download Video
+                </a>
+                <a href="{% url 'edit_job' job.id %}" class="edit-btn">
+                    Edit Video
                 </a>
             </div>
             {% endif %}

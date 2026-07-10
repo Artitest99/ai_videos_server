@@ -6,6 +6,19 @@ This document translates the product vision into an implementation plan for evol
 
 ## Implementation progress
 
+## Active first priority — Edit existing videos
+
+The next implementation priority is an editor for existing generated projects. Work on remaining creation-wizard enhancements should not delay this editing path.
+
+The approved approach is a hybrid editing model:
+
+1. Replacing scene images or videos preserves voiceover, subtitles, and timing.
+2. Subtitle-only corrections change displayed text without regenerating audio.
+3. Spoken narration changes initially regenerate the complete voiceover and rebuild dependent timing.
+4. Scene-level voiceover clips will then be introduced so later versions can regenerate only the affected scene.
+
+The interface must clearly distinguish **subtitle text** from **spoken narration** so a non-technical user understands whether an edit will affect audio, timing, cost, or later scenes.
+
 ### Foundation slice 1 — implemented July 10, 2026
 
 - Removed hard-coded ElevenLabs, Runware, and Django secrets from active source.
@@ -57,6 +70,34 @@ Still pending within Assignment 2.0: AI-assisted script generation, AI-assisted 
 - Added regression coverage for inline output, retry state, saved FPS, and starting the pipeline at a requested script.
 - Expanded the automated suite from fourteen to nineteen passing tests.
 - Verified successful and failed job-detail states in a browser without triggering a real retry.
+
+### Existing-video editor slice 1 — implemented July 10, 2026
+
+- Added `Edit Video` to completed job pages.
+- Added a scene editor that reconstructs legacy projects from script, prompt, caption, and media artifacts.
+- Displays current media, locked spoken narration, editable visual prompts, and editable on-screen subtitles per scene.
+- Added non-destructive image/video replacement with the previous asset copied into revision history.
+- Added subtitle word correction while preserving cue timestamps and the original voiceover.
+- Added explicit word-count validation so this first version cannot accidentally desynchronize captions from audio.
+- Added `VideoEditRevision` snapshots and job-level current/rendered revision tracking.
+- Marks saved edits as requiring render and exposes `Render updated video` only after changes are saved.
+- Archives the previous successful MP4 before starting a renderer-only update.
+- Renderer-only updates start at `create_video.py`; successful completion marks the edited revision current.
+- Expanded automated coverage from nineteen to twenty-four passing tests.
+- Verified the existing `R9` project in a browser as twelve editable scenes with media previews and no console errors.
+
+Current limitation: subtitle corrections must keep the same number of words within each scene. Splitting/merging cues and changing spoken narration remain later priority assignments because they require timing or voiceover regeneration.
+
+### Prompt-driven image regeneration fix — implemented July 10, 2026
+
+- Detects visual prompt changes per scene instead of treating them as metadata-only edits.
+- Archives stale active and AI-generated images in revision history.
+- Starts the next update at `generate_images_runaware.py` when a new AI image is required.
+- Promotes regenerated images by missing scene index without overwriting unrelated uploaded media.
+- Keeps scene/media mapping stable while a changed scene temporarily has no active image.
+- Makes a same-scene manual upload authoritative when prompt and media are changed together.
+- Adds clear editor messaging and a `Generate new images and render` action.
+- Expanded the automated suite from twenty-four to twenty-seven passing tests.
 
 The target experience is:
 
@@ -142,6 +183,180 @@ The first-stage application is a local, single-user desktop app. Do not build lo
 ### Local desktop operation
 
 The initial distribution runs entirely on the user's computer: local Django/API process, local frontend, local database, local media storage, and a local background worker. External network access is needed only for configured AI providers. The product should provide a simple launcher and should not require the user to manage web-server or worker terminals manually.
+
+---
+
+# Priority Phase — Edit existing generated videos
+
+## Assignment E1 — Open an existing project in edit mode
+
+### Goal
+
+Let a user move from a completed job to a friendly scene-based editing workspace.
+
+### Work
+
+- Add an `Edit video` action to successful job pages.
+- Load the project's narration, prompts, media, caption timing, voiceover, music choice, and output settings.
+- Convert legacy `.txt`, prompt JSON, caption JSON, and numbered media into one normalized editor payload.
+- Display ordered scene cards with thumbnails, narration, subtitle text, visual prompt, and scene timing.
+- Preserve original generated files and create a new editable revision rather than changing source assets destructively.
+- Warn clearly when an older legacy project is missing data required for a particular edit.
+
+### Acceptance criteria
+
+- A non-technical user can open a completed video and understand its scenes without seeing paths, JSON, filenames, or marker syntax.
+- Opening edit mode does not modify the existing video or its source assets.
+- Returning to the job page still allows playback of the last successful render.
+
+## Assignment E2 — Replace a scene image or video
+
+### Goal
+
+Allow the visual content of one scene to change without touching narration or timing.
+
+### Work
+
+- Show the current media preview on each scene card.
+- Add `Replace media`, `Generate another image`, and `Choose existing asset` actions.
+- Accept image/video upload through the existing validated media pipeline.
+- Preserve the scene's start/end time, subtitle cues, voiceover, crop defaults, effect, and transition.
+- Store replacement assets non-destructively and keep earlier alternatives available.
+- Mark the project as changed and require a new render to update the MP4.
+
+### Acceptance criteria
+
+- Replacing media changes only the selected scene's visual asset.
+- Voiceover and subtitle timing remain byte-for-byte/data-for-data unchanged.
+- The user can return to an earlier visual alternative.
+- A new render uses the replacement while the previous successful MP4 remains playable.
+
+## Assignment E3 — Correct displayed subtitle text
+
+### Goal
+
+Let users fix spelling, punctuation, capitalization, and subtitle wording without regenerating voiceover.
+
+### Work
+
+- Add inline subtitle cue editing in the scene editor.
+- Label the field `On-screen subtitles` and explain that it does not change spoken audio.
+- Preserve cue start/end timing by default.
+- Add split/merge operations later; the first version edits text within existing cues.
+- Show a soft warning when edited subtitles differ substantially from aligned spoken words.
+- Save manual-edit metadata so automatic alignment refresh does not silently overwrite corrections.
+
+### Acceptance criteria
+
+- Subtitle corrections appear in preview and the next render.
+- Voiceover audio and all scene timings remain unchanged.
+- Manual subtitle edits survive page refresh and project re-rendering.
+
+## Assignment E4 — Edit spoken narration with full regeneration
+
+### Goal
+
+Support spoken-text changes safely before localized scene audio generation exists.
+
+### Work
+
+- Add a separate `Spoken narration` editor; do not combine it with subtitle editing.
+- Before saving, explain that changing narration regenerates the complete voiceover and may change timing for every scene.
+- Require explicit confirmation before starting the paid regeneration operation.
+- Create a new voiceover asset rather than overwriting the previous one.
+- Regenerate word alignment and subtitle timing from the new voiceover.
+- Recalculate scene boundaries while preserving scene order, selected media, prompts, crop settings, and effects.
+- Keep manually edited subtitles where they can be mapped safely; surface conflicts for user review.
+- Preserve the previous project revision and rendered MP4 for rollback.
+
+### Acceptance criteria
+
+- The user understands the scope and cost before regeneration begins.
+- New audio, timings, and subtitles belong to the same voiceover revision.
+- Selected scene visuals and creative settings are retained.
+- Failed regeneration leaves the previous working revision intact.
+
+## Assignment E5 — Add edit revisions and re-render workflow
+
+### Goal
+
+Make edits reversible and clearly separate saved changes from exported video.
+
+### Work
+
+- Track an edit revision number or immutable edit snapshot.
+- Show `Unsaved`, `Saved — render required`, `Rendering`, and `Up to date` states.
+- Add `Render updated video` without replacing previous successful output.
+- Add revision history with restore for at least the previous working version.
+- Associate each render with the exact edit snapshot it used.
+
+### Acceptance criteria
+
+- Users cannot mistake saved editor changes for an already-updated MP4.
+- A failed render does not remove the last playable output.
+- The system can identify which revision produced each output.
+
+## Assignment E6 — Move to scene-level voiceover clips
+
+### Goal
+
+Allow one scene's spoken narration to change without regenerating the entire voiceover.
+
+### Work
+
+- Store an immutable voiceover clip and alignment data per scene.
+- Generate new projects scene by scene while retaining consistent provider voice/settings metadata.
+- Concatenate scene clips into a combined narration track during rendering.
+- Add short configurable pauses/crossfades at scene boundaries.
+- When one scene changes, regenerate only its clip and alignment.
+- Support two timing policies:
+  - `Keep scene duration`: fit or pad the new clip within safe limits and warn when speech would sound unnatural.
+  - `Adjust following scenes`: change the scene duration and ripple later timeline timestamps.
+- Provide a legacy conversion path that references ranges of an existing continuous voiceover until scenes are individually regenerated.
+- Detect voice/pacing discontinuities and allow full voiceover regeneration as a quality fallback.
+
+### Acceptance criteria
+
+- Editing spoken narration in one scene does not regenerate unrelated scene audio.
+- Subtitle timing is rebuilt only for the affected scene unless ripple timing is selected.
+- The user chooses timing behavior in plain language before generation.
+- The combined output has clean, natural scene boundaries.
+
+## Assignment E7 — Hybrid edit decision rules
+
+### Goal
+
+Automatically guide users to the least disruptive valid workflow.
+
+### Rules
+
+| User action | System behavior |
+| --- | --- |
+| Replace an image/video | Preserve all audio and timing |
+| Correct spelling/punctuation on screen | Subtitle-only edit |
+| Change subtitle wording without changing speech | Allow after a mismatch warning |
+| Change spoken words before E6 | Regenerate complete voiceover |
+| Change spoken words after E6 | Regenerate affected scene clip |
+| Make large structural/script changes | Recommend complete voiceover regeneration |
+| Reorder scenes after E6 | Reorder scene audio clips with the scenes |
+
+### Acceptance criteria
+
+- Every edit action states whether it changes audio, timing, later scenes, or provider cost.
+- The UI never silently regenerates voiceover.
+- Image and subtitle-only edits never invoke a paid TTS request.
+
+## Priority delivery order
+
+1. E1 — Open existing projects in edit mode.
+2. E2 — Replace scene images/videos.
+3. E3 — Correct on-screen subtitles.
+4. E5 — Save revisions and re-render safely.
+5. E4 — Full voiceover regeneration for spoken-text changes.
+6. E6 — Scene-level voiceover architecture.
+7. E7 — Complete hybrid guidance and timing policies.
+
+The first useful release of editing is E1–E3 plus the minimum safe revision/re-render behavior from E5.
 
 ---
 

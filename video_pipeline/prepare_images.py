@@ -1,43 +1,53 @@
-import os
+"""Promote generated scene media into the renderer's active media directory.
+
+The legacy implementation copied AI files only when the entire media directory
+was empty. That prevented one regenerated scene from replacing its stale image.
+This version fills missing scene indexes individually, allowing uploaded media
+and newly generated media to coexist.
+"""
+
 import shutil
+from pathlib import Path
+
 from config import BASE_DIR, FILE_NAME
 
-# Define directories
+
 OUTPUT_DIR = BASE_DIR / "assets" / "media" / FILE_NAME
 AI_OUTPUT_DIR = OUTPUT_DIR / "ai"
+MEDIA_EXTENSIONS = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".mp4", ".mov", ".avi", ".mkv", ".webm"}
 
-# Define media file extensions to check for
-MEDIA_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.mp4', '.mov', '.avi', '.mkv')
 
-def contains_media_files(directory):
-    """Check if there are any media files directly in the directory (not subdirectories)."""
-    for file in os.listdir(directory):
-        file_path = directory / file
-        if os.path.isfile(file_path) and file.lower().endswith(MEDIA_EXTENSIONS):
-            return True
-    return False
+def scene_index(path: Path):
+    digits = "".join(filter(str.isdigit, path.stem))
+    return int(digits) if digits else None
 
-def copy_ai_output_to_output():
-    """Copy all files and folders from AI_OUTPUT_DIR to OUTPUT_DIR."""
+
+def promote_missing_generated_media():
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     if not AI_OUTPUT_DIR.exists():
-        print(f"AI_OUTPUT_DIR '{AI_OUTPUT_DIR}' does not exist.")
+        print(f"AI output directory '{AI_OUTPUT_DIR}' does not exist.")
         return
-    
-    for item in os.listdir(AI_OUTPUT_DIR):
-        src_path = AI_OUTPUT_DIR / item
-        dst_path = OUTPUT_DIR / item
-        
-        if os.path.isdir(src_path):
-            shutil.copytree(src_path, dst_path, dirs_exist_ok=True)
-        else:
-            shutil.copy2(src_path, dst_path)
-    print(f"Copied contents from '{AI_OUTPUT_DIR}' to '{OUTPUT_DIR}'.")
 
-# Create OUTPUT_DIR if it doesn't exist
-OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    active_indexes = {
+        scene_index(path)
+        for path in OUTPUT_DIR.iterdir()
+        if path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS
+    }
+    copied = 0
+    for source in sorted(AI_OUTPUT_DIR.iterdir()):
+        index = scene_index(source)
+        if not source.is_file() or source.suffix.lower() not in MEDIA_EXTENSIONS or index is None:
+            continue
+        if index in active_indexes:
+            continue
+        shutil.copy2(source, OUTPUT_DIR / source.name)
+        active_indexes.add(index)
+        copied += 1
+        print(f"Promoted generated scene {index}: {source.name}")
 
-# Run the logic
-if not contains_media_files(OUTPUT_DIR):
-    copy_ai_output_to_output()
-else:
-    print(f"Media files already exist in '{OUTPUT_DIR}'. No action taken.")
+    if copied == 0:
+        print("All generated scene indexes already have active media.")
+
+
+if __name__ == "__main__":
+    promote_missing_generated_media()

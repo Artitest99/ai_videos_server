@@ -123,6 +123,38 @@ A regression test now starts the pipeline runner with subprocess execution mocke
 
 ---
 
+## BUG-003 — Editing a visual prompt reused the old scene image
+
+- **Status:** Resolved
+- **Reported:** 2026-07-10
+- **Resolved:** 2026-07-10
+- **Area:** Existing-video editor / image generation
+- **Severity:** High
+
+### Symptom
+
+After changing a scene's visual prompt in the existing-video editor, saving and rendering continued to show the same image. The changed prompt was saved, but no new image-generation request occurred.
+
+### Cause
+
+Edited projects always started their update pipeline at `create_video.py`. The existing active image and cached AI image were still present, so the renderer reused them. The legacy image generator also deliberately skipped an image when its numbered AI output already existed.
+
+### Fix
+
+- Prompt changes are now detected by comparing submitted text with the saved prompt.
+- When a prompt changes without a manual media upload, the active scene image and cached AI image are copied into revision history and removed from the active generation paths.
+- The job records `generate_images_runaware.py` as the required starting step.
+- The editor explains that a new AI image will be generated and changes the action label to `Generate new images and render`.
+- `prepare_images.py` now promotes missing generated scene indexes individually, allowing new AI media and manually uploaded media to coexist.
+- Editor media loading maps files by their numeric scene index. Removing scene 1's stale image therefore cannot cause scene 2's image to appear in scene 1 while generation is pending.
+- If the user uploads replacement media while also editing the prompt, the uploaded media remains authoritative and no unnecessary AI generation is scheduled for that scene.
+
+### Verification
+
+Regression tests verify that stale active/generated images are archived and removed, prompt changes start at image generation, missing generated indexes are promoted without overwriting uploaded media, and scene indexes remain stable. The full suite passed with 27 tests. The real `R9` editor also loaded all 12 scenes and media previews without browser errors after the fix.
+
+---
+
 # Bug entry requirements
 
 Each future bug should include:

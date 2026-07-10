@@ -17,6 +17,26 @@ class VideoJob(models.Model):
     log = models.TextField(blank=True)
     created_at = models.DateTimeField(default=timezone.now)
     completed_at = models.DateTimeField(null=True, blank=True)
+    current_revision = models.PositiveIntegerField(default=0)
+    rendered_revision = models.PositiveIntegerField(default=0)
+    render_required = models.BooleanField(default=False)
+    render_start_script = models.CharField(max_length=80, default="create_video.py")
     
     def __str__(self):
         return f"{self.file_name} - {self.status}"
+
+
+class VideoEditRevision(models.Model):
+    job = models.ForeignKey(VideoJob, on_delete=models.CASCADE, related_name="edit_revisions")
+    number = models.PositiveIntegerField()
+    snapshot = models.JSONField(default=dict)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["-number"]
+        constraints = [
+            models.UniqueConstraint(fields=["job", "number"], name="unique_job_edit_revision"),
+        ]
+
+    def __str__(self):
+        return f"{self.job.file_name} revision {self.number}"

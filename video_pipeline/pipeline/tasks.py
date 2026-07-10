@@ -155,6 +155,9 @@ def run_video_pipeline(job_id, fps='30', start_script=None):
     job.status = 'completed'
     job.progress = 100
     job.completed_at = timezone.now()
+    job.rendered_revision = job.current_revision
+    job.render_required = False
+    job.render_start_script = "create_video.py"
     job.log += "\n✓ All scripts completed successfully!\n"
     job.save()
 
