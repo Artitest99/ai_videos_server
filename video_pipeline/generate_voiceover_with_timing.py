@@ -2,7 +2,7 @@ import requests
 import os
 import json
 import time
-from config import FILE_NAME
+from config import BASE_DIR, FILE_NAME, require_setting
 
 VOICES = {
     'rachel': 'EXAVITQu4vr4xnSDxMaL',
@@ -28,12 +28,12 @@ VOICES = {
 # === CONFIG ===
 #pelegha2000:  sk_183570bf426a3dd0a30e06958314e3b4bf28ac1c5433b8c1 
 #ali: sk_33ce6496023f05bb58f67185b5752387d1ca270c7efe7aa1
-API_KEY = 'c8b4edcc21da6dff84399c9285b2a2a1c1a326f82d3112e00a453c99e6d32dd1'
+API_KEY = require_setting("ELEVENLABS_API_KEY")
 VOICE_ID = VOICES.get('Rachel_other')
-TEXT_FILE = f'scripts/{FILE_NAME}.txt'
-OUTPUT_FILE = f'assets/voiceovers/{FILE_NAME}.mp3'
-TIMING_FILE = f'assets/voiceovers/captions_{FILE_NAME}.json'
-if os.path.exists(OUTPUT_FILE):
+TEXT_FILE = BASE_DIR / 'scripts' / f'{FILE_NAME}.txt'
+OUTPUT_FILE = BASE_DIR / 'assets' / 'voiceovers' / f'{FILE_NAME}.mp3'
+TIMING_FILE = BASE_DIR / 'assets' / 'voiceovers' / f'captions_{FILE_NAME}.json'
+if OUTPUT_FILE.exists() and TIMING_FILE.exists():
     print(f"File {OUTPUT_FILE} already exists. Skipping the generation process.")
     exit()  # Exit the script if the file exists
 # === LOAD SCRIPT ===
@@ -68,7 +68,7 @@ response = requests.post(url, headers=headers, json=data)
 
 # Save the audio file if successful
 if response.status_code == 200:
-    os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
+    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_FILE, 'wb') as f:
         f.write(response.content)
     print(f"OK Voiceover saved to {OUTPUT_FILE}")
@@ -174,7 +174,7 @@ if response.status_code == 200:
                         
                         # Save timing data to JSON file
                         if timing_data:
-                            os.makedirs(os.path.dirname(TIMING_FILE), exist_ok=True)
+                            TIMING_FILE.parent.mkdir(parents=True, exist_ok=True)
                             with open(TIMING_FILE, 'w', encoding='utf-8') as f:
                                 json.dump(timing_data, f, indent=2)
                             print(f"OK Created word-level timing data with {len(timing_data)} words and saved to {TIMING_FILE}")

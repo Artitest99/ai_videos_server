@@ -3,6 +3,7 @@ from django.http import JsonResponse, FileResponse, Http404
 from django.views.decorators.csrf import csrf_exempt
 from .models import VideoJob
 from .tasks import run_video_pipeline
+from django.conf import settings
 import threading
 import os
 
@@ -14,24 +15,26 @@ def index(request):
         json_content = request.POST.get('json_content')
         
         # Create directories if they don't exist
-        os.makedirs('scripts', exist_ok=True)
-        os.makedirs('prompts', exist_ok=True)
+        scripts_dir = settings.BASE_DIR / 'scripts'
+        prompts_dir = settings.BASE_DIR / 'prompts'
+        scripts_dir.mkdir(parents=True, exist_ok=True)
+        prompts_dir.mkdir(parents=True, exist_ok=True)
         
         # Save text content to scripts folder
         if text_content:
-            text_file_path = os.path.join('scripts', f'{file_name}.txt')
+            text_file_path = scripts_dir / f'{file_name}.txt'
             with open(text_file_path, 'w', encoding='utf-8') as f:
                 f.write(text_content)
         
         # Save JSON content to prompts folder
         if json_content:
-            json_file_path = os.path.join('prompts', f'{file_name}.json')
+            json_file_path = prompts_dir / f'{file_name}.json'
             with open(json_file_path, 'w', encoding='utf-8') as f:
                 f.write(json_content)
         
         # Handle media uploads
-        media_dir = os.path.join('assets', 'media', file_name)
-        os.makedirs(media_dir, exist_ok=True)
+        media_dir = settings.BASE_DIR / 'assets' / 'media' / file_name
+        media_dir.mkdir(parents=True, exist_ok=True)
         
         # Save all uploaded media files
         for key in request.FILES:
@@ -43,7 +46,7 @@ def index(request):
                 file_ext = os.path.splitext(media_file.name)[1]
                 
                 # Save with numbered filename
-                media_path = os.path.join(media_dir, f'{media_index}{file_ext}')
+                media_path = media_dir / f'{media_index}{file_ext}'
                 with open(media_path, 'wb+') as f:
                     for chunk in media_file.chunks():
                         f.write(chunk)
@@ -86,7 +89,7 @@ def download_video(request, job_id):
         raise Http404("Video not ready yet")
     
     # Path to the video file
-    video_path = os.path.join('output', f'{job.file_name}.mp4')
+    video_path = settings.BASE_DIR / 'output' / f'{job.file_name}.mp4'
     
     if not os.path.exists(video_path):
         raise Http404("Video file not found")

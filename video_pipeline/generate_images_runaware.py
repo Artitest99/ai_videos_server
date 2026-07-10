@@ -3,13 +3,13 @@ import json
 import requests
 
 # Constants
-from config import FILE_NAME
-PROMPTS_PATH = f"prompts/{FILE_NAME}.json"
-OUTPUT_DIR = f"assets/media/{FILE_NAME}/ai"
+from config import BASE_DIR, FILE_NAME, require_setting
+PROMPTS_PATH = BASE_DIR / "prompts" / f"{FILE_NAME}.json"
+OUTPUT_DIR = BASE_DIR / "assets" / "media" / FILE_NAME / "ai"
 MODEL_ID = "civitai:102438@133677"
 IMAGE_WIDTH = 1024
 IMAGE_HEIGHT = 1024
-API_KEY = "hTCMRc48PAmGzKRg5tcfquiQAYUAcUpb"  # Replace with your actual key
+API_KEY = require_setting("RUNWARE_API_KEY")
 API_URL = "https://api.runware.ai/v1/inference"
 
 headers = {
@@ -57,15 +57,15 @@ def generate_image(prompt, output_path):
         print(f"FAIL Error {response.status_code}: {response.text}")
 
 def main():
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     prompts = load_prompts(PROMPTS_PATH)
     for i, entry in enumerate(prompts):
         prompt = entry.get("prompt")
         if not prompt:
             print(f"Skipping entry {i}, no prompt found.")
             continue
-        output_path = os.path.join(OUTPUT_DIR, f"{i}.png")
-        if os.path.exists(output_path):
+        output_path = OUTPUT_DIR / f"{i}.png"
+        if output_path.exists():
             print(f"File {output_path} already exists. Skipping the generation process.")
             continue  
         generate_image(prompt, output_path)

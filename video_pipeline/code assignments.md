@@ -4,6 +4,20 @@
 
 This document translates the product vision into an implementation plan for evolving the current Django script runner into an editable AI-video platform.
 
+## Implementation progress
+
+### Foundation slice 1 — implemented July 10, 2026
+
+- Removed hard-coded ElevenLabs, Runware, and Django secrets from active source.
+- Added environment-backed configuration and `.env.example`.
+- Anchored the active five-stage pipeline, Django uploads/downloads, and subprocess runner to absolute application paths.
+- Changed subprocess execution to use the current Python interpreter explicitly.
+- Removed automatic opening of the rendered MP4 on the server/desktop host.
+- Added pinned dependency metadata, `.gitignore`, and local setup instructions.
+- Added five passing regression tests covering job defaults, environment updates, and shared helpers.
+
+External action still required: rotate the previously exposed ElevenLabs and Runware keys in their provider dashboards, then add the replacement values to the local `.env`. This cannot be completed through source changes alone.
+
 The target experience is:
 
 1. A user creates a video project from a script.

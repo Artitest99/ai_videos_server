@@ -28,7 +28,7 @@ try:
 except Exception:
     pass
 
-from config import FILE_NAME, MUSIC, FPS
+from config import BASE_DIR, FILE_NAME, MUSIC, FPS
 
 
 class VideoGenerator:
@@ -44,13 +44,13 @@ class VideoGenerator:
     - captions use lower-third placement and cleaner pop/rise animation.
     """
 
-    SCRIPT_PATH = f"scripts/{FILE_NAME}.txt"
-    VOICEOVER_PATH = f"assets/voiceovers/{FILE_NAME}.mp3"
-    CAPTIONS_PATH = f"captions/captions_{FILE_NAME}.json"
-    MEDIA_FOLDER = f"assets/media/{FILE_NAME}"
-    BACKGROUND_MUSIC_PATH = f"assets/background_music_{MUSIC}.mp3"
-    OUTPUT_PATH = f"output/{FILE_NAME}.mp4"
-    FONT_PATH = "assets/fonts/Montserrat-Bold.ttf"
+    SCRIPT_PATH = str(BASE_DIR / "scripts" / f"{FILE_NAME}.txt")
+    VOICEOVER_PATH = str(BASE_DIR / "assets" / "voiceovers" / f"{FILE_NAME}.mp3")
+    CAPTIONS_PATH = str(BASE_DIR / "captions" / f"captions_{FILE_NAME}.json")
+    MEDIA_FOLDER = str(BASE_DIR / "assets" / "media" / FILE_NAME)
+    BACKGROUND_MUSIC_PATH = str(BASE_DIR / "assets" / f"background_music_{MUSIC}.mp3")
+    OUTPUT_PATH = str(BASE_DIR / "output" / f"{FILE_NAME}.mp4")
+    FONT_PATH = str(BASE_DIR / "assets" / "fonts" / "Montserrat-Bold.ttf")
 
     VIDEO_WIDTH, VIDEO_HEIGHT = 1080, 1920
 
@@ -580,7 +580,6 @@ class VideoGenerator:
             except Exception:
                 pass
 
-            self.open_video_file(self.OUTPUT_PATH)
             print("Video generation complete!")
         except Exception as e:
             print(f"Error creating video: {e}")

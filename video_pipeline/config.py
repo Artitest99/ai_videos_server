@@ -1,27 +1,50 @@
-# from dotenv import load_dotenv
-# import os
+"""Configuration shared by the legacy pipeline scripts.
 
-# load_dotenv()  # Automatically looks for a .env file
-# FILE_NAME = os.getenv("FILE_NAME")
-# print(FILE_NAME)
+Process environment values take precedence over the local .env file. Paths are
+anchored to this file so scripts do not depend on the shell's working directory.
+"""
 
-env_vars = {} # or dict {}
-dict={}
-with open(".env") as f:
-    for line in f:
-        if line.startswith('#') or not line.strip():
-            continue
-        # if 'export' not in line:
-        #     continue
-        # Remove leading `export `, if you have those
-        # then, split name / value pair
-        # key, value = line.replace('export ', '', 1).strip().split('=', 1)
-        key, value = line.strip().split('=', 1)
-        # os.environ[key] = value  # Load to local environ
-        # env_vars[key] = value # Save to a dict, initialized env_vars = {}
-        env_vars[key] = value
-        
-FILE_NAME = env_vars["FILE_NAME"] 
-MUSIC = env_vars["MUSIC"] 
-FPS = env_vars["FPS"] 
-print(FILE_NAME)
+from __future__ import annotations
+
+import os
+from pathlib import Path
+
+
+BASE_DIR = Path(__file__).resolve().parent
+ENV_FILE = BASE_DIR / ".env"
+
+
+def _read_env_file(path: Path = ENV_FILE) -> dict[str, str]:
+    values: dict[str, str] = {}
+    if not path.exists():
+        return values
+
+    with path.open(encoding="utf-8") as env_file:
+        for raw_line in env_file:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            values[key.strip()] = value.strip().strip('"').strip("'")
+    return values
+
+
+_FILE_VALUES = _read_env_file()
+
+
+def get_setting(name: str, default: str | None = None) -> str | None:
+    return os.environ.get(name, _FILE_VALUES.get(name, default))
+
+
+def require_setting(name: str) -> str:
+    value = get_setting(name)
+    if value is None or not value.strip():
+        raise RuntimeError(
+            f"Missing required setting {name}. Set it in the environment or {ENV_FILE}."
+        )
+    return value
+
+
+FILE_NAME = require_setting("FILE_NAME")
+MUSIC = get_setting("MUSIC", "1") or "1"
+FPS = get_setting("FPS", "30") or "30"

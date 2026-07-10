@@ -1,5 +1,7 @@
 import os
 import subprocess
+import sys
+from pathlib import Path
 from .models import VideoJob
 from django.utils import timezone
 
@@ -9,7 +11,8 @@ def run_video_pipeline(job_id, fps='30'):
     job.save()
     
     # Path to .env file
-    env_path = ".env"
+    base_dir = Path(__file__).resolve().parent.parent
+    env_path = base_dir / ".env"
     
     # Update .env file with FILE_NAME and FPS
     try:
@@ -50,7 +53,8 @@ def run_video_pipeline(job_id, fps='30'):
                 import sys
                 import select
                 process = subprocess.Popen(
-                    ["python", "-u", script],  # -u flag for unbuffered output
+                    [sys.executable, "-u", str(base_dir / script)],
+                    cwd=base_dir,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     text=True,
@@ -107,7 +111,8 @@ def run_video_pipeline(job_id, fps='30'):
             else:
                 # Normal subprocess handling for other scripts
                 result = subprocess.run(
-                    ["python", script],
+                    [sys.executable, str(base_dir / script)],
+                    cwd=base_dir,
                     capture_output=True,
                     text=True,
                     timeout=600,

@@ -1,12 +1,12 @@
 import json
 import re
 import os
-from config import FILE_NAME
+from config import BASE_DIR, FILE_NAME
 
 # === CONFIG ===
-TEXT_FILE = f'scripts/{FILE_NAME}.txt'
-TIMING_FILE = f'assets/voiceovers/captions_{FILE_NAME}.json'
-OUTPUT_FILE = f'captions/captions_{FILE_NAME}.json'
+TEXT_FILE = BASE_DIR / 'scripts' / f'{FILE_NAME}.txt'
+TIMING_FILE = BASE_DIR / 'assets' / 'voiceovers' / f'captions_{FILE_NAME}.json'
+OUTPUT_FILE = BASE_DIR / 'captions' / f'captions_{FILE_NAME}.json'
 WORDS_PER_SENTENCE = 2
 
 def process_script_with_timing():
@@ -91,7 +91,7 @@ def process_script_with_timing():
                 segments[segment_idx]["media_transition"] = True
     
     # Save the segments
-    os.makedirs(os.path.dirname(OUTPUT_FILE), exist_ok=True)
+    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
         json.dump(segments, f, indent=2)
     
