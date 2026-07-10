@@ -1,0 +1,1172 @@
+[
+  {
+    "text": "What if",
+    "text_bold": [
+      "What"
+    ],
+    "start": -0.05,
+    "end": 0.21,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "What if",
+    "text_bold": [
+      "if"
+    ],
+    "start": 0.21,
+    "end": 0.31,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "someone told",
+    "text_bold": [
+      "someone"
+    ],
+    "start": 0.31,
+    "end": 0.64,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "someone told",
+    "text_bold": [
+      "told"
+    ],
+    "start": 0.64,
+    "end": 0.92,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "you the",
+    "text_bold": [
+      "you"
+    ],
+    "start": 0.92,
+    "end": 1.06,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "you the",
+    "text_bold": [
+      "the"
+    ],
+    "start": 1.06,
+    "end": 1.18,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "continents are",
+    "text_bold": [
+      "continents"
+    ],
+    "start": 1.18,
+    "end": 1.67,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "continents are",
+    "text_bold": [
+      "are"
+    ],
+    "start": 1.67,
+    "end": 1.78,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "drifting In",
+    "text_bold": [
+      "drifting"
+    ],
+    "start": 1.78,
+    "end": 3.34,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "drifting In",
+    "text_bold": [
+      "In"
+    ],
+    "start": 3.34,
+    "end": 3.54,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "1912 Alfred",
+    "text_bold": [
+      "1912"
+    ],
+    "start": 3.54,
+    "end": 4.59,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "1912 Alfred",
+    "text_bold": [
+      "Alfred"
+    ],
+    "start": 4.59,
+    "end": 4.97,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "Wegener did",
+    "text_bold": [
+      "Wegener"
+    ],
+    "start": 4.97,
+    "end": 5.35,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "Wegener did",
+    "text_bold": [
+      "did"
+    ],
+    "start": 5.35,
+    "end": 5.73,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "\u2014  and",
+    "text_bold": [
+      "\u2014"
+    ],
+    "start": 5.73,
+    "end": 5.96,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "\u2014  and",
+    "text_bold": [
+      "and"
+    ],
+    "start": 5.96,
+    "end": 6.24,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "almost no",
+    "text_bold": [
+      "almost"
+    ],
+    "start": 6.24,
+    "end": 6.7,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "almost no",
+    "text_bold": [
+      "no"
+    ],
+    "start": 6.7,
+    "end": 6.9,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "one believed",
+    "text_bold": [
+      "one"
+    ],
+    "start": 6.9,
+    "end": 7.07,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "one believed",
+    "text_bold": [
+      "believed"
+    ],
+    "start": 7.07,
+    "end": 7.42,
+    "media_transition": true,
+    "caption_effect": "static"
+  },
+  {
+    "text": "him Wegener",
+    "text_bold": [
+      "him"
+    ],
+    "start": 7.42,
+    "end": 8.42,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "him Wegener",
+    "text_bold": [
+      "Wegener"
+    ],
+    "start": 8.42,
+    "end": 9.06,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "a German",
+    "text_bold": [
+      "a"
+    ],
+    "start": 9.06,
+    "end": 9.24,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "a German",
+    "text_bold": [
+      "German"
+    ],
+    "start": 9.24,
+    "end": 9.6,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "meteorologist noticed",
+    "text_bold": [
+      "meteorologist"
+    ],
+    "start": 9.6,
+    "end": 10.76,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "meteorologist noticed",
+    "text_bold": [
+      "noticed"
+    ],
+    "start": 10.76,
+    "end": 11.16,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "that continents",
+    "text_bold": [
+      "that"
+    ],
+    "start": 11.16,
+    "end": 11.36,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "that continents",
+    "text_bold": [
+      "continents"
+    ],
+    "start": 11.36,
+    "end": 11.93,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "fit together",
+    "text_bold": [
+      "fit"
+    ],
+    "start": 11.93,
+    "end": 12.13,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "fit together",
+    "text_bold": [
+      "together"
+    ],
+    "start": 12.13,
+    "end": 12.52,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "like puzzle",
+    "text_bold": [
+      "like"
+    ],
+    "start": 12.52,
+    "end": 12.74,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "like puzzle",
+    "text_bold": [
+      "puzzle"
+    ],
+    "start": 12.74,
+    "end": 13.07,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "pieces \u2014 ",
+    "text_bold": [
+      "pieces"
+    ],
+    "start": 13.07,
+    "end": 13.64,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "pieces \u2014 ",
+    "text_bold": [
+      "\u2014"
+    ],
+    "start": 13.64,
+    "end": 13.93,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "especially South",
+    "text_bold": [
+      "especially"
+    ],
+    "start": 13.93,
+    "end": 14.6,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "especially South",
+    "text_bold": [
+      "South"
+    ],
+    "start": 14.6,
+    "end": 14.83,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "America and",
+    "text_bold": [
+      "America"
+    ],
+    "start": 14.83,
+    "end": 15.31,
+    "media_transition": true,
+    "caption_effect": "static"
+  },
+  {
+    "text": "America and",
+    "text_bold": [
+      "and"
+    ],
+    "start": 15.31,
+    "end": 15.58,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "Africa He",
+    "text_bold": [
+      "Africa"
+    ],
+    "start": 15.58,
+    "end": 16.88,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "Africa He",
+    "text_bold": [
+      "He"
+    ],
+    "start": 16.88,
+    "end": 17.06,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "gathered geological",
+    "text_bold": [
+      "gathered"
+    ],
+    "start": 17.06,
+    "end": 17.48,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "gathered geological",
+    "text_bold": [
+      "geological"
+    ],
+    "start": 17.48,
+    "end": 18.2,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "and fossil",
+    "text_bold": [
+      "and"
+    ],
+    "start": 18.2,
+    "end": 18.38,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "and fossil",
+    "text_bold": [
+      "fossil"
+    ],
+    "start": 18.38,
+    "end": 18.78,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "evidence proposing",
+    "text_bold": [
+      "evidence"
+    ],
+    "start": 18.78,
+    "end": 19.47,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "evidence proposing",
+    "text_bold": [
+      "proposing"
+    ],
+    "start": 19.47,
+    "end": 20.01,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "that all",
+    "text_bold": [
+      "that"
+    ],
+    "start": 20.01,
+    "end": 20.22,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "that all",
+    "text_bold": [
+      "all"
+    ],
+    "start": 20.22,
+    "end": 20.58,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "land once",
+    "text_bold": [
+      "land"
+    ],
+    "start": 20.58,
+    "end": 21.0,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "land once",
+    "text_bold": [
+      "once"
+    ],
+    "start": 21.0,
+    "end": 21.32,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "formed a",
+    "text_bold": [
+      "formed"
+    ],
+    "start": 21.32,
+    "end": 21.62,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "formed a",
+    "text_bold": [
+      "a"
+    ],
+    "start": 21.62,
+    "end": 21.71,
+    "media_transition": true,
+    "caption_effect": "static"
+  },
+  {
+    "text": "supercontinent Pangaea",
+    "text_bold": [
+      "supercontinent"
+    ],
+    "start": 21.71,
+    "end": 22.8,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "supercontinent Pangaea",
+    "text_bold": [
+      "Pangaea"
+    ],
+    "start": 22.8,
+    "end": 24.09,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "But his",
+    "text_bold": [
+      "But"
+    ],
+    "start": 24.09,
+    "end": 24.35,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "But his",
+    "text_bold": [
+      "his"
+    ],
+    "start": 24.35,
+    "end": 24.57,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "theory lacked",
+    "text_bold": [
+      "theory"
+    ],
+    "start": 24.57,
+    "end": 25.04,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "theory lacked",
+    "text_bold": [
+      "lacked"
+    ],
+    "start": 25.04,
+    "end": 25.39,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "a mechanism",
+    "text_bold": [
+      "a"
+    ],
+    "start": 25.39,
+    "end": 25.47,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "a mechanism",
+    "text_bold": [
+      "mechanism"
+    ],
+    "start": 25.47,
+    "end": 26.85,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "Critics laughed",
+    "text_bold": [
+      "Critics"
+    ],
+    "start": 26.85,
+    "end": 27.31,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "Critics laughed",
+    "text_bold": [
+      "laughed"
+    ],
+    "start": 27.31,
+    "end": 27.88,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "\u2014  what",
+    "text_bold": [
+      "\u2014"
+    ],
+    "start": 27.88,
+    "end": 28.21,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "\u2014  what",
+    "text_bold": [
+      "what"
+    ],
+    "start": 28.21,
+    "end": 28.5,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "could possibly",
+    "text_bold": [
+      "could"
+    ],
+    "start": 28.5,
+    "end": 28.73,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "could possibly",
+    "text_bold": [
+      "possibly"
+    ],
+    "start": 28.73,
+    "end": 29.32,
+    "media_transition": true,
+    "caption_effect": "static"
+  },
+  {
+    "text": "move entire",
+    "text_bold": [
+      "move"
+    ],
+    "start": 29.32,
+    "end": 29.55,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "move entire",
+    "text_bold": [
+      "entire"
+    ],
+    "start": 29.55,
+    "end": 29.97,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "continents Decades",
+    "text_bold": [
+      "continents"
+    ],
+    "start": 29.97,
+    "end": 31.37,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "continents Decades",
+    "text_bold": [
+      "Decades"
+    ],
+    "start": 31.37,
+    "end": 31.91,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "later plate",
+    "text_bold": [
+      "later"
+    ],
+    "start": 31.91,
+    "end": 32.36,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "later plate",
+    "text_bold": [
+      "plate"
+    ],
+    "start": 32.36,
+    "end": 32.7,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "tectonics proved",
+    "text_bold": [
+      "tectonics"
+    ],
+    "start": 32.7,
+    "end": 33.35,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "tectonics proved",
+    "text_bold": [
+      "proved"
+    ],
+    "start": 33.35,
+    "end": 33.67,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "him right",
+    "text_bold": [
+      "him"
+    ],
+    "start": 33.67,
+    "end": 33.83,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "him right",
+    "text_bold": [
+      "right"
+    ],
+    "start": 33.83,
+    "end": 34.66,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "The Earth\u2019s",
+    "text_bold": [
+      "The"
+    ],
+    "start": 34.66,
+    "end": 34.87,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "The Earth\u2019s",
+    "text_bold": [
+      "Earth\u2019s"
+    ],
+    "start": 34.87,
+    "end": 35.24,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "crust is",
+    "text_bold": [
+      "crust"
+    ],
+    "start": 35.24,
+    "end": 35.67,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "crust is",
+    "text_bold": [
+      "is"
+    ],
+    "start": 35.67,
+    "end": 35.82,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "dynamic floating",
+    "text_bold": [
+      "dynamic"
+    ],
+    "start": 35.82,
+    "end": 36.64,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "dynamic floating",
+    "text_bold": [
+      "floating"
+    ],
+    "start": 36.64,
+    "end": 37.05,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "on molten",
+    "text_bold": [
+      "on"
+    ],
+    "start": 37.05,
+    "end": 37.19,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "on molten",
+    "text_bold": [
+      "molten"
+    ],
+    "start": 37.19,
+    "end": 37.55,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "rock Wegener",
+    "text_bold": [
+      "rock"
+    ],
+    "start": 37.55,
+    "end": 38.62,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "rock Wegener",
+    "text_bold": [
+      "Wegener"
+    ],
+    "start": 38.62,
+    "end": 39.18,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "had seen",
+    "text_bold": [
+      "had"
+    ],
+    "start": 39.18,
+    "end": 39.37,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "had seen",
+    "text_bold": [
+      "seen"
+    ],
+    "start": 39.37,
+    "end": 39.63,
+    "media_transition": true,
+    "caption_effect": "static"
+  },
+  {
+    "text": "the future",
+    "text_bold": [
+      "the"
+    ],
+    "start": 39.63,
+    "end": 39.75,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "the future",
+    "text_bold": [
+      "future"
+    ],
+    "start": 39.75,
+    "end": 40.9,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "He died",
+    "text_bold": [
+      "He"
+    ],
+    "start": 40.9,
+    "end": 41.1,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "He died",
+    "text_bold": [
+      "died"
+    ],
+    "start": 41.1,
+    "end": 41.4,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "in 1930",
+    "text_bold": [
+      "in"
+    ],
+    "start": 41.4,
+    "end": 41.5,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "in 1930",
+    "text_bold": [
+      "1930"
+    ],
+    "start": 41.5,
+    "end": 42.24,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "on a",
+    "text_bold": [
+      "on"
+    ],
+    "start": 42.24,
+    "end": 42.37,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "on a",
+    "text_bold": [
+      "a"
+    ],
+    "start": 42.37,
+    "end": 42.44,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "polar expedition",
+    "text_bold": [
+      "polar"
+    ],
+    "start": 42.44,
+    "end": 42.8,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "polar expedition",
+    "text_bold": [
+      "expedition"
+    ],
+    "start": 42.8,
+    "end": 43.7,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "never seeing",
+    "text_bold": [
+      "never"
+    ],
+    "start": 43.7,
+    "end": 44.02,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "never seeing",
+    "text_bold": [
+      "seeing"
+    ],
+    "start": 44.02,
+    "end": 44.42,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "his idea",
+    "text_bold": [
+      "his"
+    ],
+    "start": 44.42,
+    "end": 44.58,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "his idea",
+    "text_bold": [
+      "idea"
+    ],
+    "start": 44.58,
+    "end": 44.92,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "accepted But",
+    "text_bold": [
+      "accepted"
+    ],
+    "start": 44.92,
+    "end": 46.18,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "accepted But",
+    "text_bold": [
+      "But"
+    ],
+    "start": 46.18,
+    "end": 46.41,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "today he's",
+    "text_bold": [
+      "today"
+    ],
+    "start": 46.41,
+    "end": 47.13,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "today he's",
+    "text_bold": [
+      "he's"
+    ],
+    "start": 47.13,
+    "end": 47.39,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "celebrated as",
+    "text_bold": [
+      "celebrated"
+    ],
+    "start": 47.39,
+    "end": 48.07,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "celebrated as",
+    "text_bold": [
+      "as"
+    ],
+    "start": 48.07,
+    "end": 48.26,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "a visionary",
+    "text_bold": [
+      "a"
+    ],
+    "start": 48.26,
+    "end": 48.36,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "a visionary",
+    "text_bold": [
+      "visionary"
+    ],
+    "start": 48.36,
+    "end": 49.07,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "who reshaped",
+    "text_bold": [
+      "who"
+    ],
+    "start": 49.07,
+    "end": 49.36,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "who reshaped",
+    "text_bold": [
+      "reshaped"
+    ],
+    "start": 49.36,
+    "end": 50.02,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "how we",
+    "text_bold": [
+      "how"
+    ],
+    "start": 50.02,
+    "end": 50.17,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "how we",
+    "text_bold": [
+      "we"
+    ],
+    "start": 50.17,
+    "end": 50.3,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "see the",
+    "text_bold": [
+      "see"
+    ],
+    "start": 50.3,
+    "end": 50.49,
+    "media_transition": true,
+    "caption_effect": "static"
+  },
+  {
+    "text": "see the",
+    "text_bold": [
+      "the"
+    ],
+    "start": 50.49,
+    "end": 50.59,
+    "media_transition": false,
+    "caption_effect": "static"
+  },
+  {
+    "text": "planet",
+    "text_bold": [
+      "planet"
+    ],
+    "start": 50.59,
+    "end": 50.79,
+    "media_transition": false,
+    "caption_effect": "static"
+  }
+]

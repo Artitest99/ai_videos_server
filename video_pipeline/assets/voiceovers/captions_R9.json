@@ -1,0 +1,912 @@
+[
+  {
+    "text": "Ronaldo",
+    "start": 0.0,
+    "end": 0.047
+  },
+  {
+    "text": "Naz\u00e1rio",
+    "start": 0.592,
+    "end": 0.151
+  },
+  {
+    "text": "was",
+    "start": 1.277,
+    "end": 0.035
+  },
+  {
+    "text": "not",
+    "start": 1.533,
+    "end": 0.047
+  },
+  {
+    "text": "just",
+    "start": 1.776,
+    "end": 0.035
+  },
+  {
+    "text": "fast",
+    "start": 2.02,
+    "end": 0.127
+  },
+  {
+    "text": "He",
+    "start": 2.961,
+    "end": 0.047
+  },
+  {
+    "text": "looked",
+    "start": 3.146,
+    "end": 0.023
+  },
+  {
+    "text": "like",
+    "start": 3.425,
+    "end": 0.046
+  },
+  {
+    "text": "football",
+    "start": 3.657,
+    "end": 0.035
+  },
+  {
+    "text": "had",
+    "start": 4.11,
+    "end": 0.035
+  },
+  {
+    "text": "pressed",
+    "start": 4.249,
+    "end": 0.024
+  },
+  {
+    "text": "fast",
+    "start": 4.586,
+    "end": 0.047
+  },
+  {
+    "text": "forward",
+    "start": 4.934,
+    "end": 0.093
+  },
+  {
+    "text": "A",
+    "start": 6.165,
+    "end": 0.081
+  },
+  {
+    "text": "young",
+    "start": 6.362,
+    "end": 0.035
+  },
+  {
+    "text": "boy",
+    "start": 6.653,
+    "end": 0.046
+  },
+  {
+    "text": "from",
+    "start": 6.931,
+    "end": 0.023
+  },
+  {
+    "text": "Brazil",
+    "start": 7.105,
+    "end": 0.128
+  },
+  {
+    "text": "stepped",
+    "start": 7.721,
+    "end": 0.023
+  },
+  {
+    "text": "onto",
+    "start": 8.104,
+    "end": 0.023
+  },
+  {
+    "text": "the",
+    "start": 8.29,
+    "end": 0.023
+  },
+  {
+    "text": "pitch",
+    "start": 8.394,
+    "end": 0.035
+  },
+  {
+    "text": "with",
+    "start": 8.673,
+    "end": 0.034
+  },
+  {
+    "text": "a",
+    "start": 8.835,
+    "end": 0.023
+  },
+  {
+    "text": "smile",
+    "start": 8.916,
+    "end": 0.174
+  },
+  {
+    "text": "a",
+    "start": 9.613,
+    "end": 0.081
+  },
+  {
+    "text": "ball",
+    "start": 9.787,
+    "end": 0.081
+  },
+  {
+    "text": "and",
+    "start": 10.205,
+    "end": 0.034
+  },
+  {
+    "text": "a",
+    "start": 10.403,
+    "end": 0.023
+  },
+  {
+    "text": "terrifying",
+    "start": 10.507,
+    "end": 0.023
+  },
+  {
+    "text": "burst",
+    "start": 11.169,
+    "end": 0.035
+  },
+  {
+    "text": "of",
+    "start": 11.447,
+    "end": 0.034
+  },
+  {
+    "text": "speed",
+    "start": 11.552,
+    "end": 0.093
+  },
+  {
+    "text": "At",
+    "start": 12.806,
+    "end": 0.046
+  },
+  {
+    "text": "PSV",
+    "start": 13.026,
+    "end": 0.175
+  },
+  {
+    "text": "then",
+    "start": 13.897,
+    "end": 0.035
+  },
+  {
+    "text": "Barcelona",
+    "start": 14.141,
+    "end": 0.15
+  },
+  {
+    "text": "the",
+    "start": 15.012,
+    "end": 0.035
+  },
+  {
+    "text": "world",
+    "start": 15.174,
+    "end": 0.058
+  },
+  {
+    "text": "saw",
+    "start": 15.523,
+    "end": 0.047
+  },
+  {
+    "text": "something",
+    "start": 15.767,
+    "end": 0.023
+  },
+  {
+    "text": "new",
+    "start": 16.173,
+    "end": 0.093
+  },
+  {
+    "text": "a",
+    "start": 16.986,
+    "end": 0.069
+  },
+  {
+    "text": "striker",
+    "start": 17.137,
+    "end": 0.035
+  },
+  {
+    "text": "who",
+    "start": 17.636,
+    "end": 0.035
+  },
+  {
+    "text": "could",
+    "start": 17.798,
+    "end": 0.034
+  },
+  {
+    "text": "run",
+    "start": 18.031,
+    "end": 0.151
+  },
+  {
+    "text": "dribble",
+    "start": 18.646,
+    "end": 0.047
+  },
+  {
+    "text": "and",
+    "start": 19.099,
+    "end": 0.034
+  },
+  {
+    "text": "finish",
+    "start": 19.319,
+    "end": 0.07
+  },
+  {
+    "text": "before",
+    "start": 19.726,
+    "end": 0.035
+  },
+  {
+    "text": "defenders",
+    "start": 20.039,
+    "end": 0.046
+  },
+  {
+    "text": "even",
+    "start": 20.504,
+    "end": 0.024
+  },
+  {
+    "text": "reacted",
+    "start": 20.736,
+    "end": 0.081
+  },
+  {
+    "text": "They",
+    "start": 21.932,
+    "end": 0.035
+  },
+  {
+    "text": "called",
+    "start": 22.141,
+    "end": 0.023
+  },
+  {
+    "text": "him",
+    "start": 22.419,
+    "end": 0.069
+  },
+  {
+    "text": "The",
+    "start": 22.675,
+    "end": 0.023
+  },
+  {
+    "text": "Phenomenon",
+    "start": 22.86,
+    "end": 0.116
+  },
+  {
+    "text": "At",
+    "start": 24.277,
+    "end": 0.046
+  },
+  {
+    "text": "Inter",
+    "start": 24.486,
+    "end": 0.023
+  },
+  {
+    "text": "Milan",
+    "start": 24.73,
+    "end": 0.128
+  },
+  {
+    "text": "he",
+    "start": 25.322,
+    "end": 0.023
+  },
+  {
+    "text": "became",
+    "start": 25.449,
+    "end": 0.035
+  },
+  {
+    "text": "a",
+    "start": 25.728,
+    "end": 0.023
+  },
+  {
+    "text": "superstar",
+    "start": 25.809,
+    "end": 0.116
+  },
+  {
+    "text": "But",
+    "start": 27.202,
+    "end": 0.035
+  },
+  {
+    "text": "then",
+    "start": 27.4,
+    "end": 0.046
+  },
+  {
+    "text": "came",
+    "start": 27.632,
+    "end": 0.035
+  },
+  {
+    "text": "the",
+    "start": 27.829,
+    "end": 0.023
+  },
+  {
+    "text": "injuries",
+    "start": 27.969,
+    "end": 0.093
+  },
+  {
+    "text": "Two",
+    "start": 29.06,
+    "end": 0.117
+  },
+  {
+    "text": "devastating",
+    "start": 29.548,
+    "end": 0.023
+  },
+  {
+    "text": "knee",
+    "start": 30.209,
+    "end": 0.034
+  },
+  {
+    "text": "injuries",
+    "start": 30.407,
+    "end": 0.07
+  },
+  {
+    "text": "that",
+    "start": 30.964,
+    "end": 0.046
+  },
+  {
+    "text": "almost",
+    "start": 31.196,
+    "end": 0.046
+  },
+  {
+    "text": "ended",
+    "start": 31.638,
+    "end": 0.035
+  },
+  {
+    "text": "everything",
+    "start": 31.963,
+    "end": 0.081
+  },
+  {
+    "text": "For",
+    "start": 33.391,
+    "end": 0.035
+  },
+  {
+    "text": "most",
+    "start": 33.6,
+    "end": 0.034
+  },
+  {
+    "text": "players",
+    "start": 33.878,
+    "end": 0.116
+  },
+  {
+    "text": "that",
+    "start": 34.343,
+    "end": 0.035
+  },
+  {
+    "text": "would",
+    "start": 34.54,
+    "end": 0.023
+  },
+  {
+    "text": "be",
+    "start": 34.691,
+    "end": 0.047
+  },
+  {
+    "text": "the",
+    "start": 34.796,
+    "end": 0.023
+  },
+  {
+    "text": "end",
+    "start": 34.912,
+    "end": 0.023
+  },
+  {
+    "text": "of",
+    "start": 35.063,
+    "end": 0.023
+  },
+  {
+    "text": "the",
+    "start": 35.155,
+    "end": 0.023
+  },
+  {
+    "text": "story",
+    "start": 35.26,
+    "end": 0.128
+  },
+  {
+    "text": "For",
+    "start": 36.514,
+    "end": 0.034
+  },
+  {
+    "text": "Ronaldo",
+    "start": 36.734,
+    "end": 0.127
+  },
+  {
+    "text": "it",
+    "start": 37.315,
+    "end": 0.046
+  },
+  {
+    "text": "became",
+    "start": 37.477,
+    "end": 0.035
+  },
+  {
+    "text": "the",
+    "start": 37.779,
+    "end": 0.023
+  },
+  {
+    "text": "turning",
+    "start": 37.884,
+    "end": 0.023
+  },
+  {
+    "text": "point",
+    "start": 38.221,
+    "end": 0.081
+  },
+  {
+    "text": "In",
+    "start": 39.312,
+    "end": 0.058
+  },
+  {
+    "text": "2002",
+    "start": 39.521,
+    "end": 0.243
+  },
+  {
+    "text": "he",
+    "start": 40.496,
+    "end": 0.035
+  },
+  {
+    "text": "returned",
+    "start": 40.659,
+    "end": 0.024
+  },
+  {
+    "text": "to",
+    "start": 41.007,
+    "end": 0.023
+  },
+  {
+    "text": "the",
+    "start": 41.088,
+    "end": 0.023
+  },
+  {
+    "text": "World",
+    "start": 41.193,
+    "end": 0.034
+  },
+  {
+    "text": "Cup",
+    "start": 41.436,
+    "end": 0.093
+  },
+  {
+    "text": "New",
+    "start": 42.574,
+    "end": 0.034
+  },
+  {
+    "text": "haircut",
+    "start": 42.818,
+    "end": 0.093
+  },
+  {
+    "text": "New",
+    "start": 43.468,
+    "end": 0.034
+  },
+  {
+    "text": "mission",
+    "start": 43.7,
+    "end": 0.116
+  },
+  {
+    "text": "Same",
+    "start": 45.221,
+    "end": 0.047
+  },
+  {
+    "text": "magic",
+    "start": 45.593,
+    "end": 0.116
+  },
+  {
+    "text": "Goal",
+    "start": 47.125,
+    "end": 0.047
+  },
+  {
+    "text": "after",
+    "start": 47.485,
+    "end": 0.023
+  },
+  {
+    "text": "goal",
+    "start": 47.787,
+    "end": 0.07
+  },
+  {
+    "text": "he",
+    "start": 48.182,
+    "end": 0.035
+  },
+  {
+    "text": "carried",
+    "start": 48.344,
+    "end": 0.024
+  },
+  {
+    "text": "Brazil",
+    "start": 48.705,
+    "end": 0.07
+  },
+  {
+    "text": "forward",
+    "start": 49.134,
+    "end": 0.093
+  },
+  {
+    "text": "all",
+    "start": 49.866,
+    "end": 0.047
+  },
+  {
+    "text": "the",
+    "start": 50.11,
+    "end": 0.023
+  },
+  {
+    "text": "way",
+    "start": 50.214,
+    "end": 0.035
+  },
+  {
+    "text": "to",
+    "start": 50.342,
+    "end": 0.023
+  },
+  {
+    "text": "the",
+    "start": 50.423,
+    "end": 0.023
+  },
+  {
+    "text": "final",
+    "start": 50.539,
+    "end": 0.082
+  },
+  {
+    "text": "And",
+    "start": 51.236,
+    "end": 0.035
+  },
+  {
+    "text": "when",
+    "start": 51.433,
+    "end": 0.047
+  },
+  {
+    "text": "the",
+    "start": 51.642,
+    "end": 0.023
+  },
+  {
+    "text": "world",
+    "start": 51.758,
+    "end": 0.034
+  },
+  {
+    "text": "was",
+    "start": 52.037,
+    "end": 0.034
+  },
+  {
+    "text": "watching",
+    "start": 52.199,
+    "end": 0.069
+  },
+  {
+    "text": "Ronaldo",
+    "start": 52.873,
+    "end": 0.058
+  },
+  {
+    "text": "scored",
+    "start": 53.337,
+    "end": 0.023
+  },
+  {
+    "text": "twice",
+    "start": 53.651,
+    "end": 0.209
+  },
+  {
+    "text": "Brazil",
+    "start": 54.73,
+    "end": 0.058
+  },
+  {
+    "text": "were",
+    "start": 55.183,
+    "end": 0.023
+  },
+  {
+    "text": "champions",
+    "start": 55.346,
+    "end": 0.116
+  },
+  {
+    "text": "The",
+    "start": 56.344,
+    "end": 0.023
+  },
+  {
+    "text": "Phenomenon",
+    "start": 56.507,
+    "end": 0.035
+  },
+  {
+    "text": "was",
+    "start": 57.076,
+    "end": 0.035
+  },
+  {
+    "text": "back",
+    "start": 57.238,
+    "end": 0.093
+  },
+  {
+    "text": "From",
+    "start": 58.237,
+    "end": 0.046
+  },
+  {
+    "text": "Barcelona",
+    "start": 58.527,
+    "end": 0.07
+  },
+  {
+    "text": "to",
+    "start": 59.189,
+    "end": 0.047
+  },
+  {
+    "text": "Inter",
+    "start": 59.34,
+    "end": 0.081
+  },
+  {
+    "text": "Real",
+    "start": 59.885,
+    "end": 0.023
+  },
+  {
+    "text": "Madrid",
+    "start": 60.152,
+    "end": 0.081
+  },
+  {
+    "text": "and",
+    "start": 60.605,
+    "end": 0.035
+  },
+  {
+    "text": "Brazil",
+    "start": 60.814,
+    "end": 0.127
+  },
+  {
+    "text": "Ronaldo\u2019s",
+    "start": 61.604,
+    "end": 0.035
+  },
+  {
+    "text": "career",
+    "start": 62.184,
+    "end": 0.035
+  },
+  {
+    "text": "was",
+    "start": 62.602,
+    "end": 0.035
+  },
+  {
+    "text": "not",
+    "start": 62.811,
+    "end": 0.058
+  },
+  {
+    "text": "perfect",
+    "start": 63.078,
+    "end": 0.116
+  },
+  {
+    "text": "It",
+    "start": 64.111,
+    "end": 0.046
+  },
+  {
+    "text": "was",
+    "start": 64.274,
+    "end": 0.035
+  },
+  {
+    "text": "something",
+    "start": 64.425,
+    "end": 0.024
+  },
+  {
+    "text": "better",
+    "start": 64.785,
+    "end": 0.081
+  },
+  {
+    "text": "It",
+    "start": 65.69,
+    "end": 0.046
+  },
+  {
+    "text": "was",
+    "start": 65.841,
+    "end": 0.035
+  },
+  {
+    "text": "a",
+    "start": 65.969,
+    "end": 0.035
+  },
+  {
+    "text": "story",
+    "start": 66.05,
+    "end": 0.058
+  },
+  {
+    "text": "of",
+    "start": 66.41,
+    "end": 0.035
+  },
+  {
+    "text": "genius",
+    "start": 66.561,
+    "end": 0.116
+  },
+  {
+    "text": "pain",
+    "start": 67.316,
+    "end": 0.127
+  },
+  {
+    "text": "comeback",
+    "start": 68.012,
+    "end": 0.07
+  },
+  {
+    "text": "and",
+    "start": 68.593,
+    "end": 0.035
+  },
+  {
+    "text": "greatness",
+    "start": 68.813,
+    "end": 0.127
+  },
+  {
+    "text": "Because",
+    "start": 70.009,
+    "end": 0.035
+  },
+  {
+    "text": "Ronaldo",
+    "start": 70.357,
+    "end": 0.058
+  },
+  {
+    "text": "didn\u2019t",
+    "start": 70.81,
+    "end": 0.023
+  },
+  {
+    "text": "just",
+    "start": 71.031,
+    "end": 0.023
+  },
+  {
+    "text": "play",
+    "start": 71.182,
+    "end": 0.035
+  },
+  {
+    "text": "football",
+    "start": 71.367,
+    "end": 0.081
+  },
+  {
+    "text": "He",
+    "start": 72.319,
+    "end": 0.047
+  },
+  {
+    "text": "made",
+    "start": 72.494,
+    "end": 0.035
+  },
+  {
+    "text": "defenders",
+    "start": 72.691,
+    "end": 0.058
+  },
+  {
+    "text": "fear",
+    "start": 73.295,
+    "end": 0.034
+  },
+  {
+    "text": "what",
+    "start": 73.515,
+    "end": 0.023
+  },
+  {
+    "text": "football",
+    "start": 73.655,
+    "end": 0.024
+  },
+  {
+    "text": "could",
+    "start": 73.956,
+    "end": 0.024
+  },
+  {
+    "text": "become",
+    "start": 74.096,
+    "end": 0.151
+  }
+]

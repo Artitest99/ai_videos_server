@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Status - {{ job.file_name }}</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+        }
+        .card {
+            background: white;
+            border-radius: 12px;
+            padding: 40px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            margin-bottom: 30px;
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        .back-link {
+            display: inline-block;
+            color: #667eea;
+            text-decoration: none;
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+        .status-badge {
+            display: inline-block;
+            padding: 8px 16px;
+            border-radius: 8px;
+            font-weight: 600;
+            margin-bottom: 20px;
+        }
+        .status-pending { background: #ffd700; color: #856404; }
+        .status-running { background: #17a2b8; color: white; }
+        .status-completed { background: #28a745; color: white; }
+        .status-failed { background: #dc3545; color: white; }
+        .progress-container {
+            background: #e9ecef;
+            border-radius: 8px;
+            height: 30px;
+            margin: 20px 0;
+            overflow: hidden;
+        }
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.5s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+        .current-script {
+            background: #f8f9fa;
+            padding: 16px;
+            border-radius: 8px;
+            margin: 20px 0;
+            font-family: 'Courier New', monospace;
+        }
+        .log-container {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 8px;
+            max-height: 500px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+        }
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 24px;
+            height: 24px;
+            animation: spin 1s linear infinite;
+            display: inline-block;
+            margin-right: 10px;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        .download-btn {
+            display: inline-block;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 14px 32px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 16px;
+            font-weight: 600;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .download-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(102, 126, 234, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <a href="{% url 'index' %}" class="back-link">← Back to Home</a>
+            <h1>{{ job.file_name }}</h1>
+            
+            <div class="status-badge status-{{ job.status }}" id="status-badge">
+                <span id="status-text">{{ job.get_status_display }}</span>
+            </div>
+
+            <div class="progress-container">
+                <div class="progress-bar" id="progress-bar" style="width: {{ job.progress }}%;">
+                    <span id="progress-text">{{ job.progress }}%</span>
+                </div>
+            </div>
+
+            {% if job.current_script %}
+            <div class="current-script">
+                <strong>Current Script:</strong> <span id="current-script">{{ job.current_script }}</span>
+            </div>
+            {% endif %}
+
+            <h3 style="margin: 30px 0 15px 0; color: #333;">Execution Log:</h3>
+            <div class="log-container" id="log-container">{{ job.log|default:"Waiting to start..." }}</div>
+            
+            {% if job.status == 'completed' %}
+            <div style="margin-top: 30px; text-align: center;">
+                <a href="{% url 'download_video' job.id %}" class="download-btn">
+                    ⬇ Download Video
+                </a>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+
+    <script>
+        // Auto-refresh status for running jobs
+        {% if job.status == 'running' or job.status == 'pending' %}
+        setInterval(function() {
+            fetch('/api/job/{{ job.id }}/')
+                .then(response => response.json())
+                .then(data => {
+                    document.getElementById('status-text').textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
+                    document.getElementById('status-badge').className = 'status-badge status-' + data.status;
+                    document.getElementById('progress-bar').style.width = data.progress + '%';
+                    document.getElementById('progress-text').textContent = data.progress + '%';
+                    
+                    if (data.current_script) {
+                        document.getElementById('current-script').textContent = data.current_script;
+                    }
+                    
+                    document.getElementById('log-container').textContent = data.log || 'Waiting to start...';
+                    
+                    // Reload page when completed or failed
+                    if (data.status === 'completed' || data.status === 'failed') {
+                        setTimeout(() => location.reload(), 1000);
+                    }
+                });
+        }, 2000); // Refresh every 2 seconds
+        {% endif %}
+    </script>
+</body>
+</html>
