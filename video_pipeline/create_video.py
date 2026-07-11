@@ -230,6 +230,15 @@ class VideoGenerator:
             # Avoid too many caption styles. Consistency looks more professional.
             caption_animation = random.choice(['pop', 'rise', 'static'])
 
+        if caption_animation == 'static':
+            # Static means no fade, scale, movement, or other transition.
+            return (
+                ImageClip(img_array, duration=duration)
+                .set_start(seg["start"])
+                .set_end(seg["end"])
+                .set_position(("center", self.CAPTION_Y))
+            )
+
         fadein_time = min(0.08, duration * 0.15)
         fadeout_time = min(0.08, duration * 0.15)
         base = (
@@ -258,7 +267,7 @@ class VideoGenerator:
 
             return base.resize(scale).set_position(pos)
 
-        # Keep static captions truly static: this is often the cleanest style.
+        # Unknown effects fall back to a simple fade rather than movement.
         return base.set_position(("center", self.CAPTION_Y))
 
     # ----------------------------- media loading / motion -----------------------------

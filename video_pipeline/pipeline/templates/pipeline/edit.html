@@ -30,8 +30,9 @@
         .no-media { color:white; padding:20px; text-align:center; }
         .fields { display:grid; gap:16px; }
         label { display:block; font-weight:750; margin-bottom:7px; }
-        textarea { width:100%; min-height:92px; resize:vertical; border:1px solid var(--line); border-radius:10px; padding:12px; line-height:1.45; }
-        textarea:focus,input:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(101,88,232,.13); }
+        textarea,select { width:100%; border:1px solid var(--line); border-radius:10px; padding:12px; line-height:1.45; background:white; }
+        textarea { min-height:92px; resize:vertical; }
+        textarea:focus,input:focus,select:focus { outline:none; border-color:var(--primary); box-shadow:0 0 0 3px rgba(101,88,232,.13); }
         .locked { padding:12px; background:var(--soft); border-radius:10px; color:#3c465b; line-height:1.5; }
         .hint { margin:6px 0 0; color:var(--muted); font-size:13px; }
         .footer { position:sticky; bottom:16px; margin-top:24px; padding:16px; background:rgba(255,255,255,.96); border:1px solid var(--line); border-radius:14px; box-shadow:0 10px 32px rgba(30,35,65,.16); display:flex; justify-content:space-between; align-items:center; gap:16px; }
@@ -63,8 +64,31 @@
     {% if load_error %}<div class="errors">This older project cannot be edited yet: {{ load_error }}</div>{% endif %}
     {% if errors %}<div class="errors"><strong>Please review these items:</strong><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% endif %}
 
+    <section class="scene" style="margin-bottom:18px">
+        <div class="scene-title">Background music</div>
+        <div style="padding:20px">
+            <label for="music_track">Choose a track</label>
+            <select id="music_track" name="music_track" form="edit-form" required>
+                {% for track in music_tracks %}
+                <option value="{{ track.id }}" data-preview="{% url 'preview_music' track.id %}" {% if job.music_track == track.id %}selected{% endif %}>{{ track.label }}</option>
+                {% endfor %}
+            </select>
+            <audio id="music-preview" controls preload="none" style="width:100%;margin-top:12px"></audio>
+            <p class="hint">The selected track will be used in the next render.</p>
+            <div style="margin-top:16px;padding:14px;background:var(--soft);border-radius:10px">
+                <strong>Add music to your library</strong>
+                <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px">
+                    <input id="new-music-name" type="text" maxlength="120" placeholder="Track name">
+                    <input id="new-music-file" type="file" accept="audio/mpeg,.mp3">
+                </div>
+                <button id="upload-music" type="button" class="btn secondary" style="margin-top:10px">Add music</button>
+                <span id="music-upload-status" class="hint" role="status"></span>
+            </div>
+        </div>
+    </section>
+
     {% if scenes %}
-    <form method="post" enctype="multipart/form-data">
+    <form method="post" enctype="multipart/form-data" id="edit-form">
         {% csrf_token %}
         <div class="scenes">
             {% for scene in scenes %}
@@ -93,7 +117,8 @@
                         </div>
                         <div>
                             <label for="prompt_{{ scene.index }}">Visual description</label>
-                            <textarea id="prompt_{{ scene.index }}" name="prompt_{{ scene.index }}" required>{{ scene.prompt }}</textarea>
+                            <textarea id="prompt_{{ scene.index }}" name="prompt_{{ scene.index }}">{{ scene.prompt }}</textarea>
+                            <p class="hint">Optional when this scene already has an image or video.</p>
                         </div>
                         <div>
                             <label for="subtitle_{{ scene.index }}">On-screen subtitles</label>
@@ -112,5 +137,47 @@
     </form>
     {% endif %}
 </main>
+<script>
+    const musicSelect = document.getElementById('music_track');
+    const musicPreview = document.getElementById('music-preview');
+    function updateMusicPreview() {
+        const option = musicSelect.options[musicSelect.selectedIndex];
+        musicPreview.src = option ? option.dataset.preview : '';
+        musicPreview.load();
+    }
+    musicSelect.addEventListener('change', updateMusicPreview);
+    updateMusicPreview();
+    document.getElementById('upload-music').addEventListener('click', async () => {
+        const nameInput = document.getElementById('new-music-name');
+        const fileInput = document.getElementById('new-music-file');
+        const status = document.getElementById('music-upload-status');
+        if (!nameInput.value.trim() || !fileInput.files.length) {
+            status.textContent = 'Enter a track name and choose an MP3 file.';
+            return;
+        }
+        const data = new FormData();
+        data.append('music_name', nameInput.value.trim());
+        data.append('music_file', fileInput.files[0]);
+        status.textContent = 'Adding music…';
+        try {
+            const response = await fetch('{% url "upload_music" %}', {
+                method: 'POST',
+                headers: {'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value},
+                body: data,
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Music could not be uploaded.');
+            const option = new Option(result.track.label, result.track.id, true, true);
+            option.dataset.preview = result.track.preview_url;
+            musicSelect.add(option);
+            updateMusicPreview();
+            nameInput.value = '';
+            fileInput.value = '';
+            status.textContent = `${result.track.label} was added and selected.`;
+        } catch (error) {
+            status.textContent = error.message;
+        }
+    });
+</script>
 </body>
 </html>

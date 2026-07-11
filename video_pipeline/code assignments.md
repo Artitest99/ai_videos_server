@@ -99,6 +99,29 @@ Current limitation: subtitle corrections must keep the same number of words with
 - Adds clear editor messaging and a `Generate new images and render` action.
 - Expanded the automated suite from twenty-four to twenty-seven passing tests.
 
+### Media-aware prompts, music selection, and static captions — implemented July 10, 2026
+
+- Made visual prompts optional when a scene has uploaded or existing media.
+- Preserved validation when a scene has neither a prompt nor media.
+- Added all numbered background music assets to the guided creator and existing-video editor.
+- Added in-page audio preview and per-job music persistence.
+- Pipeline runs, retries, and edited renders now apply the job's selected music through configuration.
+- Made `caption_effect: "static"` truly static by bypassing fades, resizing, scaling, and movement.
+- Added focused regression coverage and expanded the suite from twenty-seven to thirty-two passing tests.
+- Browser-tested all 21 music choices, preview switching, optional prompts, and the 12-scene `R9` editor.
+
+### Persistent music-library uploads — implemented July 10, 2026
+
+- Added `Add music to your library` controls to both creation and existing-video editing screens.
+- Accepts a friendly display name and an MP3 file up to 50 MB.
+- Assigns the next available numbered asset path without overwriting existing tracks.
+- Stores uploaded files as `assets/background_music_<id>.mp3` and persists display/original filename metadata.
+- Adds and selects the new track immediately in the current page without a reload.
+- Makes uploaded tracks available by friendly name to all future projects.
+- Rejects missing files, missing names, oversized files, and non-MP3 formats with user-facing errors.
+- Expanded automated coverage from thirty-two to thirty-four passing tests.
+- Browser-tested creator/editor upload controls and empty-input guidance without console errors.
+
 The target experience is:
 
 1. A user creates a video project from a script.

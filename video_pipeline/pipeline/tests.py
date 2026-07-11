@@ -3,16 +3,17 @@ import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 
 from helper import get_array_type, to_float
 from pipeline.forms import VideoProjectSubmissionForm
-from pipeline.models import VideoEditRevision, VideoJob
+from pipeline.models import BackgroundMusicAsset, VideoEditRevision, VideoJob
 from pipeline.tasks import run_video_pipeline, update_env_variable
 import prepare_images
+from create_video import VideoGenerator
 
 
 class VideoJobModelTests(TestCase):
@@ -103,6 +104,7 @@ class VideoProjectSubmissionFormTests(TestCase):
         data = {
             "file_name": "new_project",
             "fps": 30,
+            "music_track": "1",
             "scenes_json": json.dumps([
                 {"narration": "First scene.", "prompt": "First visual."},
                 {"narration": "Second scene.", "prompt": "Second visual."},
@@ -144,6 +146,31 @@ class VideoProjectSubmissionFormTests(TestCase):
         self.assertFalse(form.is_valid())
         self.assertIn("supported image or video", form.non_field_errors()[0])
 
+    def test_allows_empty_prompt_when_scene_has_uploaded_media(self):
+        upload = SimpleUploadedFile("scene.png", b"image")
+        form = VideoProjectSubmissionForm(
+            data={
+                "file_name": "uploaded_scene",
+                "fps": 30,
+                "music_track": "1",
+                "scenes_json": json.dumps([{"narration": "Narration", "prompt": ""}]),
+            },
+            files={"media_0": upload},
+        )
+
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_requires_prompt_when_scene_has_no_upload(self):
+        form = VideoProjectSubmissionForm(data={
+            "file_name": "missing_visual",
+            "fps": 30,
+            "music_track": "1",
+            "scenes_json": json.dumps([{"narration": "Narration", "prompt": ""}]),
+        })
+
+        self.assertFalse(form.is_valid())
+        self.assertIn("visual description or an uploaded", form.errors["scenes_json"][0])
+
     def test_rejects_existing_project_name(self):
         VideoJob.objects.create(file_name="new_project")
 
@@ -167,12 +194,16 @@ class GuidedCreatorViewTests(TestCase):
             {"narration": "Closing words.", "prompt": "The city glowing at night."},
         ]
         with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
+            assets_dir = Path(directory) / "assets"
+            assets_dir.mkdir()
+            (assets_dir / "background_music_1.mp3").write_bytes(b"music")
             with patch("pipeline.views.threading.Thread") as thread_class:
                 response = self.client.post(
                     "/",
                     {
                         "file_name": "guided_project",
                         "fps": 30,
+                        "music_track": "1",
                         "scenes_json": json.dumps(scenes),
                     },
                 )
@@ -194,6 +225,7 @@ class GuidedCreatorViewTests(TestCase):
             )
             thread_class.assert_called_once()
             thread_class.return_value.start.assert_called_once()
+            self.assertEqual(VideoJob.objects.get(file_name="guided_project").music_track, "1")
 
 
 class JobDetailActionsTests(TestCase):
@@ -263,6 +295,7 @@ class ExistingVideoEditorTests(TestCase):
         (base_dir / "captions").mkdir(parents=True)
         media_dir = base_dir / "assets" / "media" / name
         media_dir.mkdir(parents=True)
+        (base_dir / "assets" / "background_music_1.mp3").write_bytes(b"music")
         (base_dir / "scripts" / f"{name}.txt").write_text(
             "Hello world ### Goodbye moon", encoding="utf-8"
         )
@@ -447,3 +480,94 @@ class GeneratedMediaPromotionTests(TestCase):
 
             self.assertEqual((output_dir / "0.png").read_bytes(), b"keep uploaded scene")
             self.assertEqual((output_dir / "1.png").read_bytes(), b"new generated scene")
+
+
+class MusicSelectionTests(TestCase):
+    def test_music_preview_serves_available_asset(self):
+        with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
+            assets_dir = Path(directory) / "assets"
+            assets_dir.mkdir()
+            (assets_dir / "background_music_7.mp3").write_bytes(b"preview music")
+
+            response = self.client.get("/music/7/")
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response["Content-Type"], "audio/mpeg")
+            response.close()
+
+    def test_editor_saves_selected_music_track(self):
+        with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
+            helper = ExistingVideoEditorTests()
+            helper.create_legacy_project(directory)
+            (Path(directory) / "assets" / "background_music_2.mp3").write_bytes(b"music two")
+            job = VideoJob.objects.create(file_name="editable", status="completed", music_track="1")
+
+            response = self.client.post(f"/job/{job.id}/edit/", {
+                "music_track": "2",
+                "prompt_0": "First visual",
+                "subtitle_0": "Hello world",
+                "prompt_1": "Second visual",
+                "subtitle_1": "Goodbye moon",
+            })
+
+            self.assertEqual(response.status_code, 302)
+            job.refresh_from_db()
+            self.assertEqual(job.music_track, "2")
+            self.assertTrue(job.render_required)
+
+    def test_uploaded_music_is_saved_and_available_to_future_projects(self):
+        with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
+            assets_dir = Path(directory) / "assets"
+            assets_dir.mkdir()
+            (assets_dir / "background_music_1.mp3").write_bytes(b"existing music")
+            upload = SimpleUploadedFile("my-song.mp3", b"new music", content_type="audio/mpeg")
+
+            response = self.client.post("/music/upload/", {
+                "music_name": "My Calm Track",
+                "music_file": upload,
+            })
+
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json()["track"]["id"], "2")
+            self.assertEqual((assets_dir / "background_music_2.mp3").read_bytes(), b"new music")
+            asset = BackgroundMusicAsset.objects.get(track_id=2)
+            self.assertEqual(asset.display_name, "My Calm Track")
+            self.assertEqual(asset.original_filename, "my-song.mp3")
+
+            future_page = self.client.get("/")
+            self.assertContains(future_page, "My Calm Track")
+            self.assertContains(future_page, 'value="2"')
+
+    def test_music_upload_rejects_non_mp3_files(self):
+        with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
+            upload = SimpleUploadedFile("not-music.wav", b"audio", content_type="audio/wav")
+
+            response = self.client.post("/music/upload/", {
+                "music_name": "Wrong format",
+                "music_file": upload,
+            })
+
+            self.assertEqual(response.status_code, 400)
+            self.assertIn("Only MP3", response.json()["error"])
+            self.assertFalse(BackgroundMusicAsset.objects.exists())
+
+
+class CaptionEffectTests(TestCase):
+    @patch("create_video.ImageClip")
+    def test_static_caption_has_no_fade_scale_or_movement_effect(self, image_clip_class):
+        clip = MagicMock()
+        image_clip_class.return_value = clip
+        clip.set_start.return_value = clip
+        clip.set_end.return_value = clip
+        clip.set_position.return_value = clip
+        generator = VideoGenerator()
+
+        result = generator.create_caption_animation(
+            {"start": 1.0, "end": 2.0}, MagicMock(), caption_animation="static"
+        )
+
+        self.assertIs(result, clip)
+        clip.fadein.assert_not_called()
+        clip.fadeout.assert_not_called()
+        clip.resize.assert_not_called()
+        clip.set_position.assert_called_once_with(("center", generator.CAPTION_Y))

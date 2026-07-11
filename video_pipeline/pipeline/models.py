@@ -21,6 +21,7 @@ class VideoJob(models.Model):
     rendered_revision = models.PositiveIntegerField(default=0)
     render_required = models.BooleanField(default=False)
     render_start_script = models.CharField(max_length=80, default="create_video.py")
+    music_track = models.CharField(max_length=40, default="1")
     
     def __str__(self):
         return f"{self.file_name} - {self.status}"
@@ -40,3 +41,16 @@ class VideoEditRevision(models.Model):
 
     def __str__(self):
         return f"{self.job.file_name} revision {self.number}"
+
+
+class BackgroundMusicAsset(models.Model):
+    track_id = models.PositiveIntegerField(unique=True)
+    display_name = models.CharField(max_length=120)
+    original_filename = models.CharField(max_length=255)
+    created_at = models.DateTimeField(default=timezone.now)
+
+    class Meta:
+        ordering = ["track_id"]
+
+    def __str__(self):
+        return self.display_name

@@ -3,6 +3,7 @@ import re
 from pathlib import Path
 
 from django import forms
+from django.conf import settings
 
 from .models import VideoJob
 
@@ -21,6 +22,7 @@ class VideoProjectSubmissionForm(forms.Form):
 
     file_name = forms.CharField(max_length=80)
     fps = forms.IntegerField(min_value=1, max_value=120, initial=30)
+    music_track = forms.CharField(max_length=40)
     scenes_json = forms.CharField(widget=forms.HiddenInput)
 
     def clean_file_name(self):
@@ -58,8 +60,8 @@ class VideoProjectSubmissionForm(forms.Form):
             prompt = scene.get("prompt", "")
             if not isinstance(narration, str) or not narration.strip():
                 raise forms.ValidationError(f"Scene {index} needs narration.")
-            if not isinstance(prompt, str) or not prompt.strip():
-                raise forms.ValidationError(f"Scene {index} needs a visual description.")
+            if not isinstance(prompt, str):
+                raise forms.ValidationError(f"Scene {index} has an invalid visual description.")
 
             cleaned_scenes.append(
                 {
@@ -72,6 +74,13 @@ class VideoProjectSubmissionForm(forms.Form):
     def clean(self):
         cleaned = super().clean()
         scenes = cleaned.get("scenes_json") or []
+
+        for index, scene in enumerate(scenes):
+            if not scene["prompt"] and not self.files.get(f"media_{index}"):
+                self.add_error(
+                    "scenes_json",
+                    f"Scene {index + 1} needs either a visual description or an uploaded image/video.",
+                )
 
         for field_name, upload in self.files.items():
             if not field_name.startswith("media_"):
@@ -92,3 +101,10 @@ class VideoProjectSubmissionForm(forms.Form):
                 raise forms.ValidationError(f"{upload.name} exceeds the 500 MB upload limit.")
 
         return cleaned
+
+    def clean_music_track(self):
+        track = self.cleaned_data["music_track"].strip()
+        music_path = settings.BASE_DIR / "assets" / f"background_music_{track}.mp3"
+        if not track.isdigit() or not music_path.exists():
+            raise forms.ValidationError("Choose one of the available background tracks.")
+        return track

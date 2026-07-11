@@ -7,11 +7,25 @@ from pathlib import Path
 from django.conf import settings
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import reverse
 
 from .editor import MEDIA_EXTENSIONS, load_editor_project, update_caption_words
 from .forms import MAX_UPLOAD_SIZE, VideoProjectSubmissionForm
-from .models import VideoEditRevision, VideoJob
+from .models import BackgroundMusicAsset, VideoEditRevision, VideoJob
 from .tasks import run_video_pipeline
+
+
+def available_music_tracks():
+    labels = {
+        str(asset.track_id): asset.display_name
+        for asset in BackgroundMusicAsset.objects.all()
+    }
+    tracks = []
+    for path in (settings.BASE_DIR / "assets").glob("background_music_*.mp3"):
+        track_id = path.stem.removeprefix("background_music_")
+        if track_id.isdigit():
+            tracks.append({"id": track_id, "label": labels.get(track_id, f"Music {track_id}")})
+    return sorted(tracks, key=lambda track: int(track["id"]))
 
 
 def index(request):
@@ -20,6 +34,7 @@ def index(request):
     if request.method == "POST" and form.is_valid():
         file_name = form.cleaned_data["file_name"]
         fps = str(form.cleaned_data["fps"])
+        music_track = form.cleaned_data["music_track"]
         scenes = form.cleaned_data["scenes_json"]
 
         scripts_dir = settings.BASE_DIR / "scripts"
@@ -51,7 +66,9 @@ def index(request):
                 for chunk in media_file.chunks():
                     destination.write(chunk)
 
-        job = VideoJob.objects.create(file_name=file_name, fps=int(fps), status="pending")
+        job = VideoJob.objects.create(
+            file_name=file_name, fps=int(fps), music_track=music_track, status="pending"
+        )
         thread = threading.Thread(target=run_video_pipeline, args=(job.id, fps), daemon=True)
         thread.start()
         return redirect("job_status", job_id=job.id)
@@ -68,7 +85,13 @@ def index(request):
     return render(
         request,
         "pipeline/index.html",
-        {"form": form, "recent_jobs": recent_jobs, "initial_scenes": initial_scenes},
+        {
+            "form": form,
+            "recent_jobs": recent_jobs,
+            "initial_scenes": initial_scenes,
+            "music_tracks": available_music_tracks(),
+            "selected_music": request.POST.get("music_track", "1"),
+        },
     )
 
 
@@ -153,13 +176,18 @@ def edit_job(request, job_id):
     errors = []
     if request.method == "POST":
         scene_word_lists = []
+        selected_music = request.POST.get("music_track", job.music_track).strip()
+        valid_music_ids = {track["id"] for track in available_music_tracks()}
+        if selected_music not in valid_music_ids:
+            errors.append("Choose one of the available background tracks.")
         for scene in editor_project["scenes"]:
             index = scene["index"]
             prompt = request.POST.get(f"prompt_{index}", "").strip()
             subtitle_text = request.POST.get(f"subtitle_{index}", "").strip()
             words = subtitle_text.split()
-            if not prompt:
-                errors.append(f"Scene {index + 1} needs a visual description.")
+            upload = request.FILES.get(f"media_{index}")
+            if not prompt and not upload and not scene["media_path"]:
+                errors.append(f"Scene {index + 1} needs a visual description or uploaded media.")
             if len(words) != scene["subtitle_word_count"]:
                 errors.append(
                     f"Scene {index + 1} must keep {scene['subtitle_word_count']} subtitle words "
@@ -169,7 +197,6 @@ def edit_job(request, job_id):
             scene["prompt_changed"] = prompt != editor_project["prompts"][index].get("prompt", "")
             scene["subtitle_text"] = subtitle_text
             scene_word_lists.append(words)
-            upload = request.FILES.get(f"media_{index}")
             if upload:
                 extension = Path(upload.name).suffix.lower()
                 if extension not in MEDIA_EXTENSIONS:
@@ -187,7 +214,7 @@ def edit_job(request, job_id):
                 editor_project["prompts"][index]["prompt"] = scene["prompt"]
                 upload = request.FILES.get(f"media_{index}")
                 old_path = scene["media_path"]
-                if scene["prompt_changed"] and not upload:
+                if scene["prompt_changed"] and scene["prompt"] and not upload:
                     needs_image_generation = True
                     if old_path and old_path.exists():
                         shutil.copy2(old_path, history_dir / old_path.name)
@@ -232,9 +259,10 @@ def edit_job(request, job_id):
             VideoEditRevision.objects.create(job=job, number=new_revision, snapshot=snapshot)
             job.current_revision = new_revision
             job.render_required = True
+            job.music_track = selected_music
             if needs_image_generation:
                 job.render_start_script = "generate_images_runaware.py"
-            job.save(update_fields=["current_revision", "render_required", "render_start_script"])
+            job.save(update_fields=["current_revision", "render_required", "render_start_script", "music_track"])
             return redirect(f"{request.path}?saved=1")
 
     return render(request, "pipeline/edit.html", {
@@ -242,6 +270,7 @@ def edit_job(request, job_id):
         "scenes": editor_project["scenes"],
         "errors": errors,
         "saved": request.GET.get("saved") == "1",
+        "music_tracks": available_music_tracks(),
     })
 
 
@@ -288,3 +317,66 @@ def render_edits(request, job_id):
     )
     thread.start()
     return redirect("job_status", job_id=job.id)
+
+
+def preview_music(request, track_id):
+    if not track_id.isdigit():
+        raise Http404("Music track not found")
+    music_path = settings.BASE_DIR / "assets" / f"background_music_{track_id}.mp3"
+    if not music_path.exists():
+        raise Http404("Music track not found")
+    response = FileResponse(music_path.open("rb"), content_type="audio/mpeg")
+    response["Content-Disposition"] = f'inline; filename="{music_path.name}"'
+    return response
+
+
+def upload_music(request):
+    if request.method != "POST":
+        raise Http404
+
+    display_name = request.POST.get("music_name", "").strip()
+    uploaded_file = request.FILES.get("music_file")
+    if not display_name:
+        return JsonResponse({"error": "Enter a name for this music track."}, status=400)
+    if len(display_name) > 120:
+        return JsonResponse({"error": "Music names can contain up to 120 characters."}, status=400)
+    if not uploaded_file:
+        return JsonResponse({"error": "Choose an MP3 file to upload."}, status=400)
+    if Path(uploaded_file.name).suffix.lower() != ".mp3":
+        return JsonResponse({"error": "Only MP3 music files are supported."}, status=400)
+    if uploaded_file.size > 50 * 1024 * 1024:
+        return JsonResponse({"error": "Music files must be 50 MB or smaller."}, status=400)
+
+    assets_dir = settings.BASE_DIR / "assets"
+    assets_dir.mkdir(parents=True, exist_ok=True)
+    existing_ids = {
+        int(path.stem.removeprefix("background_music_"))
+        for path in assets_dir.glob("background_music_*.mp3")
+        if path.stem.removeprefix("background_music_").isdigit()
+    }
+    existing_ids.update(BackgroundMusicAsset.objects.values_list("track_id", flat=True))
+    track_id = max(existing_ids, default=0) + 1
+    destination = assets_dir / f"background_music_{track_id}.mp3"
+    temporary = assets_dir / f".background_music_{track_id}.uploading"
+    try:
+        with temporary.open("wb") as output:
+            for chunk in uploaded_file.chunks():
+                output.write(chunk)
+        temporary.replace(destination)
+        BackgroundMusicAsset.objects.create(
+            track_id=track_id,
+            display_name=display_name,
+            original_filename=Path(uploaded_file.name).name,
+        )
+    except Exception:
+        temporary.unlink(missing_ok=True)
+        destination.unlink(missing_ok=True)
+        raise
+
+    return JsonResponse({
+        "track": {
+            "id": str(track_id),
+            "label": display_name,
+            "preview_url": reverse("preview_music", args=[track_id]),
+        }
+    })

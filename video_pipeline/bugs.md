@@ -155,6 +155,61 @@ Regression tests verify that stale active/generated images are archived and remo
 
 ---
 
+## BUG-004 — Visual prompt was required even when media was uploaded
+
+- **Status:** Resolved
+- **Reported:** 2026-07-10
+- **Resolved:** 2026-07-10
+- **Area:** Guided creator / existing-video editor
+- **Severity:** Medium
+
+### Symptom
+
+Users who uploaded their own image or video were still forced to enter an AI visual prompt, even though no AI image was needed for that scene.
+
+### Cause
+
+Prompt validation was unconditional in both the structured scene form and browser fields.
+
+### Fix
+
+- A prompt is now required only when a new scene has no uploaded media.
+- In the existing-video editor, the prompt may be empty when the scene already has media or receives a replacement upload.
+- Prompt textareas are no longer marked `required` in the browser.
+- Clearing a prompt while retaining current/uploaded media does not remove that media or schedule AI generation.
+
+### Verification
+
+Regression tests cover an uploaded scene with an empty prompt and a scene with neither prompt nor upload. Browser verification confirmed prompt fields are optional on creation and editing screens.
+
+---
+
+## BUG-005 — Static captions still faded in and out
+
+- **Status:** Resolved
+- **Reported:** 2026-07-10
+- **Resolved:** 2026-07-10
+- **Area:** Video rendering / captions
+- **Severity:** Medium
+
+### Symptom
+
+Caption records configured with `caption_effect: "static"` still appeared to have an animation/effect.
+
+### Cause
+
+`create_caption_animation()` constructed every caption clip with `fadein()` and `fadeout()` before checking whether the selected effect was static. The static branch removed movement but returned the already-faded clip.
+
+### Fix
+
+The static branch now returns immediately after setting start, end, and fixed position. It applies no fade, resize, scale, or movement operation.
+
+### Verification
+
+A regression test mocks the caption clip and verifies that static captions never call `fadein`, `fadeout`, or `resize`, while retaining the fixed caption position. The full suite passed with 32 tests.
+
+---
+
 # Bug entry requirements
 
 Each future bug should include:

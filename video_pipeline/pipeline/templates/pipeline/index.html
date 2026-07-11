@@ -43,7 +43,7 @@
         .step-heading p { margin: 0; color: var(--muted); }
         .settings-grid { display: grid; grid-template-columns: 1fr 180px; gap: 18px; }
         label { display: block; font-weight: 700; margin-bottom: 8px; }
-        input[type="text"], input[type="number"], textarea {
+        input[type="text"], input[type="number"], textarea, select {
             width: 100%; border: 1px solid var(--line); border-radius: 10px;
             padding: 12px 14px; color: var(--ink); background: white;
             transition: border-color .15s, box-shadow .15s;
@@ -140,6 +140,26 @@
                     {% if form.fps.errors %}<div class="field-errors">{{ form.fps.errors }}</div>{% endif %}
                 </div>
             </div>
+            <div style="margin-top:20px">
+                <label for="music_track">Background music</label>
+                <select id="music_track" name="music_track" required>
+                    {% for track in music_tracks %}
+                    <option value="{{ track.id }}" data-preview="{% url 'preview_music' track.id %}" {% if selected_music == track.id %}selected{% endif %}>{{ track.label }}</option>
+                    {% endfor %}
+                </select>
+                <audio id="music-preview" controls preload="none" style="width:100%;margin-top:10px"></audio>
+                <p class="hint">Preview the available tracks and choose the one that fits your video.</p>
+                {% if form.music_track.errors %}<div class="field-errors">{{ form.music_track.errors }}</div>{% endif %}
+                <div style="margin-top:16px;padding:14px;background:var(--soft);border-radius:10px">
+                    <strong>Add music to your library</strong>
+                    <div class="settings-grid" style="margin-top:10px">
+                        <input id="new-music-name" type="text" maxlength="120" placeholder="Track name">
+                        <input id="new-music-file" type="file" accept="audio/mpeg,.mp3">
+                    </div>
+                    <button id="upload-music" type="button" class="btn btn-secondary" style="margin-top:10px">Add music</button>
+                    <span id="music-upload-status" class="hint" role="status"></span>
+                </div>
+            </div>
         </section>
 
         <section class="panel">
@@ -176,6 +196,47 @@
     const form = document.getElementById('creator-form');
     const scenesInput = document.getElementById('scenes-json');
     const initialScenes = JSON.parse(document.getElementById('initial-scenes').textContent);
+    const musicSelect = document.getElementById('music_track');
+    const musicPreview = document.getElementById('music-preview');
+    function updateMusicPreview() {
+        const option = musicSelect.options[musicSelect.selectedIndex];
+        musicPreview.src = option ? option.dataset.preview : '';
+        musicPreview.load();
+    }
+    musicSelect.addEventListener('change', updateMusicPreview);
+    updateMusicPreview();
+
+    document.getElementById('upload-music').addEventListener('click', async () => {
+        const nameInput = document.getElementById('new-music-name');
+        const fileInput = document.getElementById('new-music-file');
+        const status = document.getElementById('music-upload-status');
+        if (!nameInput.value.trim() || !fileInput.files.length) {
+            status.textContent = 'Enter a track name and choose an MP3 file.';
+            return;
+        }
+        const data = new FormData();
+        data.append('music_name', nameInput.value.trim());
+        data.append('music_file', fileInput.files[0]);
+        status.textContent = 'Adding music…';
+        try {
+            const response = await fetch('{% url "upload_music" %}', {
+                method: 'POST',
+                headers: {'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value},
+                body: data,
+            });
+            const result = await response.json();
+            if (!response.ok) throw new Error(result.error || 'Music could not be uploaded.');
+            const option = new Option(result.track.label, result.track.id, true, true);
+            option.dataset.preview = result.track.preview_url;
+            musicSelect.add(option);
+            updateMusicPreview();
+            nameInput.value = '';
+            fileInput.value = '';
+            status.textContent = `${result.track.label} was added and selected.`;
+        } catch (error) {
+            status.textContent = error.message;
+        }
+    });
 
     function sceneCard(scene = {narration: '', prompt: ''}) {
         const card = document.createElement('article');
@@ -200,8 +261,8 @@
                         <label>What should viewers see?</label>
                         <button type="button" class="btn btn-quiet use-narration">Use narration</button>
                     </div>
-                    <textarea class="prompt" required placeholder="Describe the image you want AI to create."></textarea>
-                    <p class="hint">You can describe a subject, place, mood, lighting, and visual style.</p>
+                    <textarea class="prompt" placeholder="Describe the image you want AI to create."></textarea>
+                    <p class="hint">Optional when you upload your own image or video.</p>
                 </div>
                 <div class="scene-media">
                     <label>Already have a picture or video? <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
