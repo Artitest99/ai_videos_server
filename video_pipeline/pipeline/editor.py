@@ -65,6 +65,9 @@ def load_editor_project(base_dir: Path, file_name: str):
             "number": index + 1,
             "narration": narrations[index] if index < len(narrations) else "",
             "prompt": prompt_entry.get("prompt", ""),
+            "use_original_audio": bool(prompt_entry.get("use_original_audio", False)),
+            "hold_after_seconds": float(prompt_entry.get("hold_after_seconds", 0) or 0),
+            "is_video": bool(media_path and media_path.suffix.lower() in {".mp4", ".mov", ".avi", ".mkv", ".webm"}),
             "subtitle_text": " ".join(words),
             "subtitle_word_count": len(words),
             "media_name": media_path.name if media_path else None,
@@ -75,18 +78,20 @@ def load_editor_project(base_dir: Path, file_name: str):
 
 
 def update_caption_words(captions, caption_ranges, scene_word_lists):
-    all_words = []
     for scene_index, (start, end) in enumerate(caption_ranges):
         words = scene_word_lists[scene_index]
-        if len(words) != end - start:
+        cue_count = end - start
+        if words and len(words) != cue_count:
             raise ValueError(
-                f"Scene {scene_index + 1} must keep {end - start} subtitle words to preserve timing."
+                f"Scene {scene_index + 1} must keep {cue_count} subtitle words to preserve timing."
             )
-        all_words.extend(words)
-
-    for index, cue in enumerate(captions):
-        group_start = index - index % 2
-        group_words = all_words[group_start:group_start + 2]
-        cue["text"] = " ".join(group_words)
-        cue["text_bold"] = [all_words[index]]
+        for local_index, cue_index in enumerate(range(start, end)):
+            cue = captions[cue_index]
+            if not words:
+                cue["text"] = ""
+                cue["text_bold"] = []
+                continue
+            group_start = local_index - local_index % 2
+            cue["text"] = " ".join(words[group_start:group_start + 2])
+            cue["text_bold"] = [words[local_index]]
     return captions

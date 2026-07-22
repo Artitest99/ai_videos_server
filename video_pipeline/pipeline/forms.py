@@ -1,4 +1,5 @@
 import json
+import math
 import re
 from pathlib import Path
 
@@ -15,6 +16,7 @@ ALLOWED_MEDIA_EXTENSIONS = {
 }
 MAX_UPLOAD_SIZE = 500 * 1024 * 1024
 MAX_SCENES = 100
+MAX_SCENE_HOLD_SECONDS = 300
 
 
 class VideoProjectSubmissionForm(forms.Form):
@@ -58,15 +60,30 @@ class VideoProjectSubmissionForm(forms.Form):
 
             narration = scene.get("narration", "")
             prompt = scene.get("prompt", "")
-            if not isinstance(narration, str) or not narration.strip():
-                raise forms.ValidationError(f"Scene {index} needs narration.")
+            if not isinstance(narration, str):
+                raise forms.ValidationError(f"Scene {index} has invalid narration.")
             if not isinstance(prompt, str):
                 raise forms.ValidationError(f"Scene {index} has an invalid visual description.")
+            try:
+                hold_after_seconds = float(scene.get("hold_after_seconds", 0) or 0)
+            except (TypeError, ValueError) as exc:
+                raise forms.ValidationError(f"Scene {index} has an invalid time after scene.") from exc
+            if not math.isfinite(hold_after_seconds) or not 0 <= hold_after_seconds <= MAX_SCENE_HOLD_SECONDS:
+                raise forms.ValidationError(
+                    f"Scene {index} time after scene must be between 0 and {MAX_SCENE_HOLD_SECONDS} seconds."
+                )
+            use_original_audio = scene.get("use_original_audio", False)
+            if not isinstance(use_original_audio, bool):
+                raise forms.ValidationError(f"Scene {index} has an invalid original sound setting.")
+            if not narration.strip() and hold_after_seconds <= 0:
+                raise forms.ValidationError(f"Scene {index} needs narration or a positive time after scene.")
 
             cleaned_scenes.append(
                 {
                     "narration": narration.strip(),
                     "prompt": prompt.strip(),
+                    "use_original_audio": use_original_audio,
+                    "hold_after_seconds": round(hold_after_seconds, 3),
                 }
             )
         return cleaned_scenes

@@ -23,7 +23,8 @@
         .secondary { color:#4e42c4; background:#ebe9ff; }
         .scenes { display:grid; gap:18px; }
         .scene { background:white; border:1px solid rgba(23,32,51,.1); border-radius:16px; box-shadow:0 12px 35px rgba(42,48,78,.08); overflow:hidden; }
-        .scene-title { padding:13px 18px; background:var(--soft); border-bottom:1px solid var(--line); font-weight:800; }
+        .scene-title { padding:13px 18px; background:var(--soft); border-bottom:1px solid var(--line); font-weight:800; display:flex; justify-content:space-between; align-items:center; gap:12px; }
+        .scene-actions { display:flex; gap:7px; } .scene-actions .btn { padding:7px 10px; }
         .scene-grid { display:grid; grid-template-columns:260px 1fr; gap:20px; padding:20px; }
         .preview { aspect-ratio:9/16; width:100%; background:#131722; border-radius:11px; overflow:hidden; display:grid; place-items:center; }
         .preview img,.preview video { width:100%; height:100%; object-fit:cover; }
@@ -90,10 +91,11 @@
     {% if scenes %}
     <form method="post" enctype="multipart/form-data" id="edit-form">
         {% csrf_token %}
-        <div class="scenes">
+        {% if narration_free %}<input type="hidden" id="scene-order" name="scene_order">{% endif %}
+        <div class="scenes" id="scene-list">
             {% for scene in scenes %}
-            <section class="scene">
-                <div class="scene-title">Scene {{ scene.number }}</div>
+            <section class="scene" data-token="{{ scene.index }}">
+                <div class="scene-title"><span class="scene-number">Scene {{ scene.number }}</span>{% if narration_free %}<span class="scene-actions"><button class="btn secondary move-up" type="button">Up</button><button class="btn secondary move-down" type="button">Down</button><button class="btn secondary remove-scene" type="button">Remove</button></span>{% endif %}</div>
                 <div class="scene-grid">
                     <div>
                         <div class="preview">
@@ -107,7 +109,12 @@
                         </div>
                         <label style="margin-top:12px" for="media_{{ scene.index }}">Replace image or video</label>
                         <input id="media_{{ scene.index }}" name="media_{{ scene.index }}" type="file" accept="image/*,video/*">
-                        <p class="hint">Replacing media does not change audio, subtitles, or scene timing.</p>
+                        <p class="hint">A replacement video can use its own sound.</p>
+                        <label style="margin-top:12px"><input class="use-original-audio" id="use_original_audio_{{ scene.index }}" name="use_original_audio_{{ scene.index }}" type="checkbox" {% if scene.use_original_audio %}checked{% endif %} {% if not scene.is_video %}disabled{% endif %}> Use original video sound</label>
+                        <p class="hint">Background music is lowered while original sound plays.</p>
+                        <label style="margin-top:12px" for="hold_after_seconds_{{ scene.index }}">Time after scene (seconds)</label>
+                        <input id="hold_after_seconds_{{ scene.index }}" name="hold_after_seconds_{{ scene.index }}" type="number" min="0" max="300" step="0.1" value="{{ scene.hold_after_seconds }}">
+                        <p class="hint">This scene continues without narration before the next scene.</p>
                     </div>
                     <div class="fields">
                         <div>
@@ -122,14 +129,15 @@
                         </div>
                         <div>
                             <label for="subtitle_{{ scene.index }}">On-screen subtitles</label>
-                            <textarea id="subtitle_{{ scene.index }}" name="subtitle_{{ scene.index }}" required>{{ scene.subtitle_text }}</textarea>
-                            <p class="hint">Correct words only. Keep {{ scene.subtitle_word_count }} words so timing remains synchronized with the existing voiceover.</p>
+                            <textarea id="subtitle_{{ scene.index }}" name="subtitle_{{ scene.index }}">{{ scene.subtitle_text }}</textarea>
+                            <p class="hint">Optional. Leave blank to hide subtitles for this scene. If entered, keep {{ scene.subtitle_word_count }} words so timing remains synchronized.</p>
                         </div>
                     </div>
                 </div>
             </section>
             {% endfor %}
         </div>
+        {% if narration_free %}<button id="add-scene" class="btn secondary" type="button" style="margin-top:18px">Add scene</button><p class="hint">New scenes have no narration. Set a positive duration and add an upload or visual description.</p>{% endif %}
         <div class="footer">
             <span class="muted">Saving creates a new revision. Your current MP4 remains available until you render.</span>
             <button class="btn primary" type="submit">Save edits</button>
@@ -138,6 +146,83 @@
     {% endif %}
 </main>
 <script>
+    const narrationFree = {{ narration_free|yesno:"true,false" }};
+    const sceneList = document.getElementById('scene-list');
+    const sceneOrder = document.getElementById('scene-order');
+    let newSceneCounter = 0;
+
+    function attachScene(card) {
+        const input = card.querySelector('input[type="file"][name^="media_"]');
+        const checkbox = card.querySelector('.use-original-audio');
+        input.addEventListener('change', () => {
+            const file = input.files[0];
+            if (!file) return;
+            const preview = card.querySelector('.preview');
+            const url = URL.createObjectURL(file);
+            preview.innerHTML = file.type.startsWith('video/')
+                ? `<video controls preload="metadata" src="${url}"></video>`
+                : `<img src="${url}" alt="Selected scene preview">`;
+            checkbox.disabled = !file.type.startsWith('video/');
+            if (checkbox.disabled) checkbox.checked = false;
+        });
+        if (!narrationFree) return;
+        card.querySelector('.move-up').addEventListener('click', () => {
+            if (card.previousElementSibling) sceneList.insertBefore(card, card.previousElementSibling);
+            refreshScenes();
+        });
+        card.querySelector('.move-down').addEventListener('click', () => {
+            if (card.nextElementSibling) sceneList.insertBefore(card.nextElementSibling, card);
+            refreshScenes();
+        });
+        card.querySelector('.remove-scene').addEventListener('click', () => {
+            if (sceneList.children.length > 1) card.remove();
+            refreshScenes();
+        });
+    }
+
+    function refreshScenes() {
+        if (!narrationFree) return;
+        [...sceneList.children].forEach((card, index) => {
+            card.querySelector('.scene-number').textContent = `Scene ${index + 1}`;
+            card.querySelector('.move-up').disabled = index === 0;
+            card.querySelector('.move-down').disabled = index === sceneList.children.length - 1;
+            card.querySelector('.remove-scene').disabled = sceneList.children.length === 1;
+        });
+        sceneOrder.value = JSON.stringify([...sceneList.children].map(card => card.dataset.token));
+    }
+
+    if (sceneList) [...sceneList.children].forEach(attachScene);
+    if (narrationFree) {
+        document.getElementById('add-scene').addEventListener('click', () => {
+            const token = `new_${Date.now()}_${newSceneCounter++}`;
+            const card = document.createElement('section');
+            card.className = 'scene';
+            card.dataset.token = token;
+            card.innerHTML = `
+                <div class="scene-title"><span class="scene-number">New scene</span><span class="scene-actions"><button class="btn secondary move-up" type="button">Up</button><button class="btn secondary move-down" type="button">Down</button><button class="btn secondary remove-scene" type="button">Remove</button></span></div>
+                <div class="scene-grid">
+                    <div>
+                        <div class="preview"><div class="no-media">Choose an image or video</div></div>
+                        <label style="margin-top:12px">Image or video</label>
+                        <input name="media_${token}" type="file" accept="image/*,video/*">
+                        <label style="margin-top:12px"><input class="use-original-audio" name="use_original_audio_${token}" type="checkbox" disabled> Use original video sound</label>
+                        <label style="margin-top:12px">Scene duration (seconds)</label>
+                        <input name="hold_after_seconds_${token}" type="number" min="0.1" max="300" step="0.1" value="5" required>
+                    </div>
+                    <div class="fields">
+                        <div><label>Spoken narration</label><div class="locked">No narration</div></div>
+                        <div><label>Visual description</label><textarea name="prompt_${token}" placeholder="Optional when uploading media"></textarea></div>
+                        <div><label>On-screen subtitles</label><textarea disabled placeholder="No narration, so this scene has no subtitles"></textarea></div>
+                    </div>
+                </div>`;
+            sceneList.appendChild(card);
+            attachScene(card);
+            refreshScenes();
+        });
+        refreshScenes();
+        document.getElementById('edit-form').addEventListener('submit', refreshScenes);
+    }
+
     const musicSelect = document.getElementById('music_track');
     const musicPreview = document.getElementById('music-preview');
     function updateMusicPreview() {
@@ -178,6 +263,7 @@
             status.textContent = error.message;
         }
     });
+
 </script>
 </body>
 </html>

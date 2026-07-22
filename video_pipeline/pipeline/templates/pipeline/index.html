@@ -238,7 +238,7 @@
         }
     });
 
-    function sceneCard(scene = {narration: '', prompt: ''}) {
+    function sceneCard(scene = {narration: '', prompt: '', use_original_audio: false, hold_after_seconds: 0}) {
         const card = document.createElement('article');
         card.className = 'scene-card';
         card.innerHTML = `
@@ -253,7 +253,7 @@
             <div class="scene-body">
                 <div>
                     <label>Narration</label>
-                    <textarea class="narration" required placeholder="What should the voiceover say in this scene?"></textarea>
+                    <textarea class="narration" placeholder="What should the voiceover say in this scene? Leave blank for a silent scene."></textarea>
                     <p class="hint">Write naturally. Technical markers are not needed.</p>
                 </div>
                 <div>
@@ -268,9 +268,29 @@
                     <label>Already have a picture or video? <span style="font-weight:400;color:var(--muted)">(optional)</span></label>
                     <input class="media" type="file" accept="image/*,video/*">
                 </div>
+                <div>
+                    <label><input class="use-original-audio" type="checkbox"> Use original video sound</label>
+                    <p class="hint">Available for uploaded video scenes. Background music will be lowered while this sound plays.</p>
+                </div>
+                <div>
+                    <label>Time after scene (seconds)</label>
+                    <input class="hold-after-seconds" type="number" min="0" max="300" step="0.1" value="0">
+                    <p class="hint">The current scene keeps playing without narration before the next scene.</p>
+                </div>
             </div>`;
         card.querySelector('.narration').value = scene.narration || '';
         card.querySelector('.prompt').value = scene.prompt || '';
+        const mediaInput = card.querySelector('.media');
+        const originalAudio = card.querySelector('.use-original-audio');
+        originalAudio.checked = Boolean(scene.use_original_audio);
+        card.querySelector('.hold-after-seconds').value = scene.hold_after_seconds || 0;
+        const updateOriginalAudioState = () => {
+            const file = mediaInput.files[0];
+            originalAudio.disabled = !file || !file.type.startsWith('video/');
+            if (originalAudio.disabled) originalAudio.checked = false;
+        };
+        mediaInput.addEventListener('change', updateOriginalAudioState);
+        updateOriginalAudioState();
         card.querySelector('.use-narration').addEventListener('click', () => {
             const narration = card.querySelector('.narration').value.trim();
             card.querySelector('.prompt').value = narration;
@@ -314,6 +334,8 @@
         const scenes = [...sceneList.children].map(card => ({
             narration: card.querySelector('.narration').value,
             prompt: card.querySelector('.prompt').value,
+            use_original_audio: card.querySelector('.use-original-audio').checked,
+            hold_after_seconds: Number(card.querySelector('.hold-after-seconds').value || 0),
         }));
         scenesInput.value = JSON.stringify(scenes);
     });

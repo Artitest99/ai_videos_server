@@ -122,6 +122,32 @@ Current limitation: subtitle corrections must keep the same number of words with
 - Expanded automated coverage from thirty-two to thirty-four passing tests.
 - Browser-tested creator/editor upload controls and empty-input guidance without console errors.
 
+### Scene audio and timing controls — implemented July 22, 2026
+
+- Added per-scene `use_original_audio` and `hold_after_seconds` settings to creation, validation, prompt metadata, editing, revision snapshots, and rendering.
+- Added narration-free projects and mixed narrated/silent scene timing.
+- Holds extend the previous scene with no narration or captions; background music continues.
+- Enabled original uploaded-video audio while significantly ducking background music over that scene.
+- Added stereo silence generation and duration-matched audio composition.
+- Narration-free scenes require a positive duration; scene time is validated up to 300 seconds.
+
+### Existing-video editor slices 2–4 — implemented July 22, 2026
+
+- Made on-screen subtitles optional. Blank text suppresses a scene's caption cues while preserving timing.
+- Added instant local image/video preview for replacement uploads.
+- Added add, remove, move-up, move-down, and reorder controls for narration-free projects only.
+- New narration-free scenes support uploaded media or a visual-generation prompt, duration, and original video sound.
+- Reordering safely stages and renumbers media, archives prior assets, clears stale generated-media mappings, and records a new revision.
+- Narrated projects retain locked scene structure until scene-level voiceover editing is implemented.
+
+### Renderer performance optimization — implemented July 22, 2026
+
+- Added cached duration-limited portrait H.264 working media for uploaded videos.
+- Crops wide sources before resizing and combines cover scaling with motion in one resize stage.
+- Added a static-scene fast path and removed the expensive full-frame vignette composite.
+- Uses AMD AMF hardware H.264 when available; automatically falls back to CPU `libx264` with `veryfast` on Intel or unsupported hardware.
+- Increased CPU thread use and verified AMD encoding through MoviePy.
+- Measured static-video frame generation improving from 1.65 to 5.92 fps, animated images to 10.38 fps, and static images to 34.49 fps.
 The target experience is:
 
 1. A user creates a video project from a script.

@@ -2,6 +2,8 @@ import requests
 import os
 import json
 import time
+import numpy as np
+from moviepy.audio.AudioClip import AudioClip
 from config import BASE_DIR, FILE_NAME, require_setting
 
 VOICES = {
@@ -28,7 +30,7 @@ VOICES = {
 # === CONFIG ===
 #pelegha2000:  sk_183570bf426a3dd0a30e06958314e3b4bf28ac1c5433b8c1 
 #ali: sk_33ce6496023f05bb58f67185b5752387d1ca270c7efe7aa1
-API_KEY = require_setting("ELEVENLABS_API_KEY")
+API_KEY = None
 VOICE_ID = VOICES.get('Rachel_other')
 TEXT_FILE = BASE_DIR / 'scripts' / f'{FILE_NAME}.txt'
 OUTPUT_FILE = BASE_DIR / 'assets' / 'voiceovers' / f'{FILE_NAME}.mp3'
@@ -42,6 +44,27 @@ with open(TEXT_FILE, 'r', encoding='utf-8') as f:
     script = script.replace('###', '')
     script = script.replace('**', '')
     script = script.replace('*', '')
+
+if not script.strip():
+    prompts_path = BASE_DIR / 'prompts' / f'{FILE_NAME}.json'
+    with open(prompts_path, 'r', encoding='utf-8') as f:
+        scene_settings = json.load(f)
+    duration = sum(max(0.0, float(scene.get('hold_after_seconds', 0) or 0)) for scene in scene_settings)
+    if duration <= 0:
+        raise ValueError('A narration-free project needs a positive scene duration.')
+    OUTPUT_FILE.parent.mkdir(parents=True, exist_ok=True)
+    def make_silence(t):
+        if isinstance(t, np.ndarray):
+            return np.zeros((len(t), 2), dtype=float)
+        return np.zeros(2, dtype=float)
+    silence = AudioClip(make_silence, duration=duration, fps=44100)
+    silence.write_audiofile(str(OUTPUT_FILE), fps=44100, codec='libmp3lame', logger=None)
+    silence.close()
+    TIMING_FILE.write_text('[]', encoding='utf-8')
+    print(f"OK Silent voiceover saved to {OUTPUT_FILE}")
+    raise SystemExit(0)
+
+API_KEY = require_setting("ELEVENLABS_API_KEY")
 
 # === APPROACH: REGULAR TTS + HISTORY RETRIEVAL ===
 # Step 1: Generate the audio first

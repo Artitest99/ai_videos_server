@@ -224,3 +224,51 @@ Each future bug should include:
 - How the fix was verified, preferably with an automated regression test.
 
 When a known bug is fixed, move its complete entry from **Known unresolved bugs** to **Resolved bugs** instead of deleting its history.
+
+## BUG-006 — Narration-free render failed while mixing silence with stereo music
+
+- **Status:** Resolved
+- **Reported:** 2026-07-22
+- **Resolved:** 2026-07-22
+- **Area:** Audio rendering
+- **Severity:** High
+
+### Symptom and cause
+
+MoviePy failed with `operands could not be broadcast together with shapes (N,N) (N,2)`. Synthetic silence returned `(samples,)` while background music returned stereo `(samples, 2)` frames.
+
+### Fix and verification
+
+Both silence factories now return two-channel scalar and vectorized frames. A regression test mixes generated silence with stereo audio and verifies `(samples, 2)`. The focused suite passed 14 tests.
+
+## BUG-007 — Forty-second videos required approximately ten minutes to render
+
+- **Status:** Resolved
+- **Reported:** 2026-07-22
+- **Resolved:** 2026-07-22
+- **Area:** Video rendering performance
+- **Severity:** High
+
+### Symptom and cause
+
+A 40-second 1080x1920 project took about ten minutes. Landscape frames expanded beyond seven megapixels, were resized twice, received a full-resolution vignette composite, decoded VP9 in software, and used CPU `libx264/medium`. Profiling measured the full video path at 1.65 fps.
+
+### Fix and verification
+
+The renderer now caches duration-limited portrait H.264 media, crops early, performs one motion resize, uses a static fast path, omits the vignette, and selects AMD AMF with a `libx264/veryfast` fallback. Static video reached 5.92 fps, animated video 4.84 fps, animated images 10.38 fps, and static images 34.49 fps. A real MoviePy AMF encode succeeded.
+
+## BUG-008 — Existing editor could not restructure narration-free videos
+
+- **Status:** Resolved
+- **Reported:** 2026-07-22
+- **Resolved:** 2026-07-22
+- **Area:** Existing-video editor
+- **Severity:** Medium
+
+### Symptom and cause
+
+Users could replace media but could not add, remove, reorder, or preview newly selected scene files. The editor used fixed server-rendered cards addressed only by original numeric indexes.
+
+### Fix and verification
+
+Narration-free projects now expose add/remove/move controls, submit explicit scene order, preview selections with browser object URLs, and safely stage and renumber active media. Narrated projects intentionally keep fixed structure. The focused 15-test editor suite and final 3-test narration-free suite passed.

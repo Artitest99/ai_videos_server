@@ -1,4 +1,5 @@
 import json
+import numpy as np
 import sys
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -6,6 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
+from moviepy.editor import AudioClip, CompositeAudioClip
 from django.test import TestCase, override_settings
 
 from helper import get_array_type, to_float
@@ -219,8 +221,16 @@ class GuidedCreatorViewTests(TestCase):
             self.assertEqual(
                 saved_prompts,
                 [
-                    {"filename": "scene_01.png", "prompt": scenes[0]["prompt"]},
-                    {"filename": "scene_02.png", "prompt": scenes[1]["prompt"]},
+                    {
+                        "filename": "scene_01.png", "prompt": scenes[0]["prompt"],
+                        "narration": scenes[0]["narration"],
+                        "use_original_audio": False, "hold_after_seconds": 0.0,
+                    },
+                    {
+                        "filename": "scene_02.png", "prompt": scenes[1]["prompt"],
+                        "narration": scenes[1]["narration"],
+                        "use_original_audio": False, "hold_after_seconds": 0.0,
+                    },
                 ],
             )
             thread_class.assert_called_once()
@@ -378,6 +388,27 @@ class ExistingVideoEditorTests(TestCase):
             )
             self.assertFalse((media_dir / "0.png").exists())
 
+    def test_subtitles_can_be_cleared_for_one_scene(self):
+        with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
+            self.create_legacy_project(directory)
+            job = VideoJob.objects.create(file_name="editable", status="completed")
+
+            response = self.client.post(f"/job/{job.id}/edit/", {
+                "music_track": "1",
+                "prompt_0": "First visual",
+                "subtitle_0": "",
+                "prompt_1": "Second visual",
+                "subtitle_1": "Goodbye moon",
+            })
+
+            self.assertEqual(response.status_code, 302)
+            captions = json.loads(
+                (Path(directory) / "captions" / "captions_editable.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual([cue["text"] for cue in captions[:2]], ["", ""])
+            self.assertEqual([cue["text_bold"] for cue in captions[:2]], [[], []])
+            self.assertEqual(captions[2]["text"], "Goodbye moon")
+            self.assertEqual(captions[3]["text"], "Goodbye moon")
     def test_subtitle_edit_rejects_word_count_change(self):
         with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
             self.create_legacy_project(directory)
@@ -464,6 +495,69 @@ class ExistingVideoEditorTests(TestCase):
             daemon=True,
         )
 
+
+class NarrationFreeSceneStructureTests(TestCase):
+    def create_silent_project(self, base_dir, name="silent_edit"):
+        base_dir = Path(base_dir)
+        (base_dir / "scripts").mkdir(parents=True)
+        (base_dir / "prompts").mkdir(parents=True)
+        (base_dir / "captions").mkdir(parents=True)
+        media = base_dir / "assets" / "media" / name
+        media.mkdir(parents=True)
+        (base_dir / "assets" / "background_music_1.mp3").write_bytes(b"music")
+        (base_dir / "scripts" / f"{name}.txt").write_text(" ### ", encoding="utf-8")
+        (base_dir / "prompts" / f"{name}.json").write_text(json.dumps([
+            {"filename": "scene_01.png", "prompt": "First", "narration": "", "hold_after_seconds": 3, "use_original_audio": False},
+            {"filename": "scene_02.png", "prompt": "Second", "narration": "", "hold_after_seconds": 4, "use_original_audio": False},
+        ]), encoding="utf-8")
+        (base_dir / "captions" / f"captions_{name}.json").write_text("[]", encoding="utf-8")
+        (media / "0.png").write_bytes(b"first-media")
+        (media / "1.png").write_bytes(b"second-media")
+        return media
+
+    def test_edit_page_offers_structure_controls_and_upload_preview(self):
+        with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
+            self.create_silent_project(directory)
+            job = VideoJob.objects.create(file_name="silent_edit", status="completed")
+            response = self.client.get(f"/job/{job.id}/edit/")
+
+        self.assertContains(response, "Add scene")
+        self.assertContains(response, "move-up")
+        self.assertContains(response, "URL.createObjectURL")
+
+    def test_reorders_existing_scenes_and_adds_uploaded_scene(self):
+        upload = SimpleUploadedFile("added.jpg", b"new-media", content_type="image/jpeg")
+        with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
+            media = self.create_silent_project(directory)
+            job = VideoJob.objects.create(file_name="silent_edit", status="completed")
+            response = self.client.post(f"/job/{job.id}/edit/", {
+                "music_track": "1",
+                "scene_order": json.dumps(["1", "0", "new_test"]),
+                "prompt_1": "Second", "hold_after_seconds_1": "4",
+                "prompt_0": "First", "hold_after_seconds_0": "3",
+                "prompt_new_test": "Added", "hold_after_seconds_new_test": "5",
+                "media_new_test": upload,
+            })
+
+            self.assertEqual(response.status_code, 302)
+            prompts = json.loads((Path(directory) / "prompts" / "silent_edit.json").read_text(encoding="utf-8"))
+            self.assertEqual([item["prompt"] for item in prompts], ["Second", "First", "Added"])
+            self.assertEqual([item["hold_after_seconds"] for item in prompts], [4.0, 3.0, 5.0])
+            self.assertEqual((media / "0.png").read_bytes(), b"second-media")
+            self.assertEqual((media / "1.png").read_bytes(), b"first-media")
+            self.assertEqual((media / "2.jpg").read_bytes(), b"new-media")
+            self.assertEqual((Path(directory) / "captions" / "captions_silent_edit.json").read_text(encoding="utf-8"), "[]")
+            job.refresh_from_db()
+            self.assertTrue(job.render_required)
+
+    def test_narrated_project_does_not_offer_structure_controls(self):
+        with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
+            ExistingVideoEditorTests().create_legacy_project(directory)
+            job = VideoJob.objects.create(file_name="editable", status="completed")
+            response = self.client.get(f"/job/{job.id}/edit/")
+
+        self.assertNotContains(response, "Add scene")
+        self.assertContains(response, "const narrationFree = false")
 
 class GeneratedMediaPromotionTests(TestCase):
     def test_promotes_only_missing_scene_indexes(self):
@@ -571,3 +665,84 @@ class CaptionEffectTests(TestCase):
         clip.fadeout.assert_not_called()
         clip.resize.assert_not_called()
         clip.set_position.assert_called_once_with(("center", generator.CAPTION_Y))
+
+class SceneAudioAndHoldFeatureTests(TestCase):
+    def test_form_accepts_scene_audio_and_hold_settings(self):
+        with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
+            assets = Path(directory) / "assets"
+            assets.mkdir()
+            (assets / "background_music_1.mp3").write_bytes(b"music")
+            form = VideoProjectSubmissionForm(data={
+                "file_name": "audio_hold",
+                "fps": 30,
+                "music_track": "1",
+                "scenes_json": json.dumps([{
+                    "narration": "Words here",
+                    "prompt": "A scene",
+                    "use_original_audio": True,
+                    "hold_after_seconds": 2.5,
+                }]),
+            })
+            self.assertTrue(form.is_valid(), form.errors)
+            self.assertTrue(form.cleaned_data["scenes_json"][0]["use_original_audio"])
+            self.assertEqual(form.cleaned_data["scenes_json"][0]["hold_after_seconds"], 2.5)
+
+    def test_form_allows_silent_scene_with_explicit_duration(self):
+        with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
+            assets = Path(directory) / "assets"
+            assets.mkdir()
+            (assets / "background_music_1.mp3").write_bytes(b"music")
+            form = VideoProjectSubmissionForm(data={
+                "file_name": "silent_scene",
+                "fps": 30,
+                "music_track": "1",
+                "scenes_json": json.dumps([{
+                    "narration": "",
+                    "prompt": "A quiet landscape",
+                    "use_original_audio": False,
+                    "hold_after_seconds": 4,
+                }]),
+            })
+            self.assertTrue(form.is_valid(), form.errors)
+
+    def test_generated_silence_mixes_with_stereo_audio(self):
+        generator = VideoGenerator()
+        silence = generator._silence(0.1)
+        stereo = AudioClip(
+            lambda t: np.zeros((len(t), 2), dtype=float) if isinstance(t, np.ndarray) else np.zeros(2),
+            duration=0.1,
+            fps=44100,
+        )
+        mixed = CompositeAudioClip([silence, stereo])
+        samples = mixed.get_frame(np.array([0.0, 0.01, 0.02]))
+        self.assertEqual(samples.shape, (3, 2))
+        mixed.close()
+        silence.close()
+        stereo.close()
+    def test_scene_timeline_inserts_hold_and_shifts_following_captions(self):
+        with TemporaryDirectory() as directory:
+            base = Path(directory)
+            prompts = base / "prompts.json"
+            script = base / "script.txt"
+            prompts.write_text(json.dumps([
+                {"narration": "Hello world", "hold_after_seconds": 2, "use_original_audio": True},
+                {"narration": "Next scene", "hold_after_seconds": 1, "use_original_audio": False},
+            ]), encoding="utf-8")
+            script.write_text("Hello world ### Next scene", encoding="utf-8")
+            captions = [
+                {"text": "Hello", "start": 0, "end": .5},
+                {"text": "world", "start": .5, "end": 1},
+                {"text": "Next", "start": 1, "end": 1.5},
+                {"text": "scene", "start": 1.5, "end": 2},
+            ]
+            generator = VideoGenerator()
+            generator.PROMPTS_PATH = str(prompts)
+            generator.SCRIPT_PATH = str(script)
+            timeline = generator.build_scene_timeline(captions)
+
+            self.assertEqual(timeline[0]["start"], 0)
+            self.assertEqual(timeline[0]["end"], 3)
+            self.assertEqual(timeline[1]["start"], 3)
+            self.assertEqual(timeline[1]["captions"][0]["start"], 3)
+            self.assertEqual(timeline[1]["end"], 5.0)
+            self.assertTrue(timeline[0]["use_original_audio"])

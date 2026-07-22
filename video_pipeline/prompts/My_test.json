@@ -1,0 +1,16 @@
+[
+  {
+    "filename": "scene_01.png",
+    "prompt": "",
+    "narration": "",
+    "use_original_audio": false,
+    "hold_after_seconds": 10.0
+  },
+  {
+    "filename": "scene_02.png",
+    "prompt": "",
+    "narration": "",
+    "use_original_audio": true,
+    "hold_after_seconds": 12.0
+  }
+]

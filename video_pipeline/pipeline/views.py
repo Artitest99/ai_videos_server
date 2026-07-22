@@ -10,7 +10,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
 from .editor import MEDIA_EXTENSIONS, load_editor_project, update_caption_words
-from .forms import MAX_UPLOAD_SIZE, VideoProjectSubmissionForm
+from .forms import MAX_SCENES, MAX_UPLOAD_SIZE, VideoProjectSubmissionForm
 from .models import BackgroundMusicAsset, VideoEditRevision, VideoJob
 from .tasks import run_video_pipeline
 
@@ -49,6 +49,9 @@ def index(request):
             {
                 "filename": f"scene_{index:02d}.png",
                 "prompt": scene["prompt"],
+                "narration": scene["narration"],
+                "use_original_audio": scene["use_original_audio"],
+                "hold_after_seconds": scene["hold_after_seconds"],
             }
             for index, scene in enumerate(scenes, start=1)
         ]
@@ -74,7 +77,7 @@ def index(request):
         return redirect("job_status", job_id=job.id)
 
     recent_jobs = VideoJob.objects.all().order_by("-created_at")[:10]
-    initial_scenes = [{"narration": "", "prompt": ""}]
+    initial_scenes = [{"narration": "", "prompt": "", "use_original_audio": False, "hold_after_seconds": 0}]
     if request.method == "POST":
         try:
             submitted_scenes = json.loads(request.POST.get("scenes_json", "[]"))
@@ -163,6 +166,121 @@ def retry_job(request, job_id):
     return redirect("job_status", job_id=job.id)
 
 
+def save_silent_scene_structure(request, job, editor_project, selected_music):
+    """Save add/remove/reorder operations for a project with no narration."""
+    errors = []
+    try:
+        order = json.loads(request.POST.get("scene_order", "[]"))
+    except json.JSONDecodeError:
+        order = []
+    if not isinstance(order, list) or not order:
+        return ["Keep at least one scene."], None
+    if len(order) > MAX_SCENES or any(not isinstance(token, str) for token in order):
+        return [f"A project can contain up to {MAX_SCENES} valid scenes."], None
+    if len(set(order)) != len(order):
+        return [f"A project can contain up to {MAX_SCENES} unique scenes."], None
+
+    existing = {str(scene["index"]): scene for scene in editor_project["scenes"]}
+    submitted = []
+    for position, token in enumerate(order, start=1):
+        if not isinstance(token, str):
+            errors.append(f"Scene {position} is invalid.")
+            continue
+        source = existing.get(token)
+        suffix = token
+        prompt = request.POST.get(f"prompt_{suffix}", "").strip()
+        upload = request.FILES.get(f"media_{suffix}")
+        try:
+            hold = float(request.POST.get(f"hold_after_seconds_{suffix}", "0") or 0)
+        except ValueError:
+            hold = -1
+        if not 0 < hold <= 300:
+            errors.append(f"Scene {position} needs a time between 0 and 300 seconds.")
+        if not prompt and not upload and not (source and source["media_path"]):
+            errors.append(f"Scene {position} needs a visual description or uploaded media.")
+        if upload:
+            extension = Path(upload.name).suffix.lower()
+            if extension not in MEDIA_EXTENSIONS:
+                errors.append(f"{upload.name} is not a supported image or video format.")
+            if upload.size > MAX_UPLOAD_SIZE:
+                errors.append(f"{upload.name} exceeds the 500 MB upload limit.")
+        submitted.append({
+            "token": token, "source": source, "prompt": prompt, "upload": upload,
+            "hold": round(max(0, hold), 3),
+            "use_original_audio": request.POST.get(f"use_original_audio_{suffix}") == "on",
+        })
+    if errors:
+        return errors, None
+
+    new_revision = job.current_revision + 1
+    media_dir = editor_project["paths"]["media"]
+    history_dir = media_dir / "history" / f"revision_{new_revision:03d}"
+    history_dir.mkdir(parents=True, exist_ok=True)
+    staging_dir = media_dir / f".scene_edit_{new_revision:03d}"
+    if staging_dir.exists():
+        shutil.rmtree(staging_dir)
+    staging_dir.mkdir(parents=True)
+    needs_image_generation = False
+    prompts = []
+    media_names = []
+    try:
+        for new_index, item in enumerate(submitted):
+            source = item["source"]
+            upload = item["upload"]
+            source_path = source["media_path"] if source else None
+            prompt_changed = bool(source and item["prompt"] != source["prompt"])
+            staged_path = None
+            if upload:
+                extension = Path(upload.name).suffix.lower()
+                staged_path = staging_dir / f"{new_index}{extension}"
+                with staged_path.open("wb") as destination:
+                    for chunk in upload.chunks():
+                        destination.write(chunk)
+            elif source_path and source_path.exists() and not prompt_changed:
+                staged_path = staging_dir / f"{new_index}{source_path.suffix.lower()}"
+                shutil.copy2(source_path, staged_path)
+            elif item["prompt"]:
+                needs_image_generation = True
+
+            is_video = bool(staged_path and staged_path.suffix.lower() in {".mp4", ".mov", ".avi", ".mkv", ".webm"})
+            prompts.append({
+                "filename": f"scene_{new_index + 1:02d}.png",
+                "prompt": item["prompt"],
+                "narration": "",
+                "use_original_audio": bool(item["use_original_audio"] and is_video),
+                "hold_after_seconds": item["hold"],
+            })
+            media_names.append(staged_path.name if staged_path else None)
+
+        for path in media_dir.iterdir():
+            if path.is_file() and path.suffix.lower() in MEDIA_EXTENSIONS:
+                shutil.copy2(path, history_dir / path.name)
+                path.unlink()
+        ai_dir = media_dir / "ai"
+        if ai_dir.exists():
+            ai_history = history_dir / "ai"
+            shutil.copytree(ai_dir, ai_history, dirs_exist_ok=True)
+            shutil.rmtree(ai_dir)
+        for staged_path in staging_dir.iterdir():
+            shutil.move(str(staged_path), media_dir / staged_path.name)
+    finally:
+        if staging_dir.exists():
+            shutil.rmtree(staging_dir)
+
+    editor_project["paths"]["script"].write_text(" ### ".join("" for _ in prompts), encoding="utf-8")
+    editor_project["paths"]["prompts"].write_text(
+        json.dumps(prompts, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    editor_project["paths"]["captions"].write_text("[]", encoding="utf-8")
+    snapshot = {"prompts": prompts, "captions": [], "media": media_names, "scene_order": order}
+    VideoEditRevision.objects.create(job=job, number=new_revision, snapshot=snapshot)
+    job.current_revision = new_revision
+    job.render_required = True
+    job.music_track = selected_music
+    job.render_start_script = "generate_images_runaware.py" if needs_image_generation else "create_video.py"
+    job.save(update_fields=["current_revision", "render_required", "render_start_script", "music_track"])
+    return [], new_revision
+
 def edit_job(request, job_id):
     job = get_object_or_404(VideoJob, id=job_id)
     if job.status != "completed":
@@ -180,15 +298,37 @@ def edit_job(request, job_id):
         valid_music_ids = {track["id"] for track in available_music_tracks()}
         if selected_music not in valid_music_ids:
             errors.append("Choose one of the available background tracks.")
+        narration_free = all(not scene["narration"].strip() for scene in editor_project["scenes"])
+        if narration_free and request.POST.get("scene_order"):
+            if errors:
+                return render(request, "pipeline/edit.html", {
+                    "job": job, "scenes": editor_project["scenes"], "errors": errors,
+                    "saved": False, "music_tracks": available_music_tracks(), "narration_free": True,
+                })
+            structure_errors, revision = save_silent_scene_structure(request, job, editor_project, selected_music)
+            if not structure_errors:
+                return redirect(f"{request.path}?saved=1")
+            errors.extend(structure_errors)
+            return render(request, "pipeline/edit.html", {
+                "job": job, "scenes": editor_project["scenes"], "errors": errors,
+                "saved": False, "music_tracks": available_music_tracks(), "narration_free": True,
+            })
         for scene in editor_project["scenes"]:
             index = scene["index"]
             prompt = request.POST.get(f"prompt_{index}", "").strip()
             subtitle_text = request.POST.get(f"subtitle_{index}", "").strip()
             words = subtitle_text.split()
             upload = request.FILES.get(f"media_{index}")
+            try:
+                hold_after_seconds = float(request.POST.get(f"hold_after_seconds_{index}", "0") or 0)
+            except ValueError:
+                hold_after_seconds = -1
+            if not 0 <= hold_after_seconds <= 300:
+                errors.append(f"Scene {index + 1} time after scene must be between 0 and 300 seconds.")
+            use_original_audio = request.POST.get(f"use_original_audio_{index}") == "on"
             if not prompt and not upload and not scene["media_path"]:
                 errors.append(f"Scene {index + 1} needs a visual description or uploaded media.")
-            if len(words) != scene["subtitle_word_count"]:
+            if words and len(words) != scene["subtitle_word_count"]:
                 errors.append(
                     f"Scene {index + 1} must keep {scene['subtitle_word_count']} subtitle words "
                     "in this first editor version so voiceover timing stays unchanged."
@@ -196,6 +336,8 @@ def edit_job(request, job_id):
             scene["prompt"] = prompt
             scene["prompt_changed"] = prompt != editor_project["prompts"][index].get("prompt", "")
             scene["subtitle_text"] = subtitle_text
+            scene["hold_after_seconds"] = round(hold_after_seconds, 3) if hold_after_seconds >= 0 else 0
+            scene["use_original_audio"] = use_original_audio
             scene_word_lists.append(words)
             if upload:
                 extension = Path(upload.name).suffix.lower()
@@ -212,6 +354,8 @@ def edit_job(request, job_id):
             for scene in editor_project["scenes"]:
                 index = scene["index"]
                 editor_project["prompts"][index]["prompt"] = scene["prompt"]
+                editor_project["prompts"][index]["narration"] = scene["narration"]
+                editor_project["prompts"][index]["hold_after_seconds"] = scene["hold_after_seconds"]
                 upload = request.FILES.get(f"media_{index}")
                 old_path = scene["media_path"]
                 if scene["prompt_changed"] and scene["prompt"] and not upload:
@@ -229,21 +373,24 @@ def edit_job(request, job_id):
                                 ai_history_dir.mkdir(parents=True, exist_ok=True)
                                 shutil.copy2(ai_path, ai_history_dir / ai_path.name)
                                 ai_path.unlink()
-                if not upload:
-                    continue
-                if old_path and old_path.exists():
-                    shutil.copy2(old_path, history_dir / old_path.name)
-                extension = Path(upload.name).suffix.lower()
-                stem = old_path.stem if old_path else str(index)
-                new_path = editor_project["paths"]["media"] / f"{stem}{extension}"
-                with new_path.open("wb") as destination:
-                    for chunk in upload.chunks():
-                        destination.write(chunk)
-                if old_path and old_path != new_path and old_path.exists():
-                    old_path.unlink()
-                scene["media_name"] = new_path.name
-                scene["media_path"] = new_path
-
+                if upload:
+                    if old_path and old_path.exists():
+                        shutil.copy2(old_path, history_dir / old_path.name)
+                    extension = Path(upload.name).suffix.lower()
+                    stem = old_path.stem if old_path else str(index)
+                    new_path = editor_project["paths"]["media"] / f"{stem}{extension}"
+                    with new_path.open("wb") as destination:
+                        for chunk in upload.chunks():
+                            destination.write(chunk)
+                    if old_path and old_path != new_path and old_path.exists():
+                        old_path.unlink()
+                    scene["media_name"] = new_path.name
+                    scene["media_path"] = new_path
+                active_path = scene["media_path"]
+                is_video = bool(active_path and active_path.suffix.lower() in {".mp4", ".mov", ".avi", ".mkv", ".webm"})
+                editor_project["prompts"][index]["use_original_audio"] = bool(
+                    scene["use_original_audio"] and is_video
+                )
             captions = update_caption_words(editor_project["captions"], editor_project["caption_ranges"], scene_word_lists)
             editor_project["paths"]["prompts"].write_text(
                 json.dumps(editor_project["prompts"], ensure_ascii=False, indent=2), encoding="utf-8"
@@ -255,6 +402,13 @@ def edit_job(request, job_id):
                 "prompts": editor_project["prompts"],
                 "captions": captions,
                 "media": [scene["media_name"] for scene in editor_project["scenes"]],
+                "scene_settings": [
+                    {
+                        "use_original_audio": prompt.get("use_original_audio", False),
+                        "hold_after_seconds": prompt.get("hold_after_seconds", 0),
+                    }
+                    for prompt in editor_project["prompts"]
+                ],
             }
             VideoEditRevision.objects.create(job=job, number=new_revision, snapshot=snapshot)
             job.current_revision = new_revision
@@ -271,6 +425,7 @@ def edit_job(request, job_id):
         "errors": errors,
         "saved": request.GET.get("saved") == "1",
         "music_tracks": available_music_tracks(),
+        "narration_free": all(not scene["narration"].strip() for scene in editor_project["scenes"]),
     })
 
 

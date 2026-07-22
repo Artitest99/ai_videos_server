@@ -2,7 +2,7 @@
 
 ## 1. Purpose
 
-`ai_videos_server` is a small Django web application that turns a written script into a narrated, captioned AI video. The browser UI collects a project name, frame rate, narration text, image prompts, and optional uploaded media. The server stores those inputs, starts a background Python thread, runs a fixed sequence of standalone scripts, tracks progress in SQLite, and serves the resulting MP4 for download.
+`ai_videos_server` is a small Django web application that turns scene descriptions and optional narration into an AI video. The browser UI collects a project name, frame rate, narration text, image prompts, and optional uploaded media. The server stores those inputs, starts a background Python thread, runs a fixed sequence of standalone scripts, tracks progress in SQLite, and serves the resulting MP4 for download.
 
 The active output format is a vertical 1080x1920 video intended for Shorts, TikTok, or Reels. A separate landscape renderer exists, but the web application does not currently call it.
 
@@ -46,7 +46,7 @@ The actual application root is `Y:\ai_videos_server\video_pipeline`.
 | `db.sqlite3` | Django job/status database. |
 | `.env` | Shared current-job configuration (`FILE_NAME`, `MUSIC`, `FPS`). |
 
-There is no dependency manifest or project README in the current tree. A populated `.venv` exists one level above the Django application.
+Python dependencies are pinned in `requirements.txt`. The deployed virtual environment is located one level above the Django application at `Y:\ai_videos_server\.venv`.
 
 ## 4. Web application
 
@@ -152,25 +152,32 @@ Consequently, any uploaded media prevents all generated images from being copied
 
 ### `create_video.py`
 
-`VideoGenerator` is the active vertical renderer. It targets 1080x1920 and uses MoviePy, Pillow, and NumPy.
+`VideoGenerator` is the active vertical 1080x1920 MoviePy renderer. It consumes the ordered prompt records as scene settings and supports narrated, mixed, and narration-free projects.
 
-The renderer:
+Current behavior:
 
-- Loads and sorts caption records by start time.
-- Loads top-level image/video files from `assets/media/<FILE_NAME>/` and sorts them by digits in each filename.
-- Groups captions until a `media_transition` flag, assigning one media file to that time span.
-- Loads images as `ImageClip` and videos as silent `VideoFileClip`; short video clips are looped.
-- Resizes media to cover the vertical canvas with extra scale for motion.
-- Normalizes older animation names into a smaller set of cinematic pan, push, pull, reveal, drift, pop, shake, or static effects.
-- Slightly overlaps scenes and crossfades them to avoid black gaps.
-- Rasterizes two-word captions using Montserrat Bold, white text, a dark stroke, and a yellow highlighted current word.
-- Applies caption `pop`, `rise`, or `static` motion.
-- Optionally overlays a vignette.
-- Loads narration and the selected background music, loops music to video length, lowers its volume, and mixes both tracks.
-- writes H.264/AAC MP4 at the configured FPS.
+- Builds an explicit scene timeline from narration word timing plus each scene's `hold_after_seconds`.
+- Keeps the previous visual playing during a post-scene hold while narration and captions are silent.
+- Allows uploaded video audio per scene through `use_original_audio`; narration remains present and background music is ducked from `0.08` to `0.015` while source audio plays.
+- Uses stereo synthetic silence so narration-free audio can mix safely with stereo background music.
+- Loops short videos and their enabled source audio to fill the scene.
+- Uses a single cover-and-motion resize stage and a fixed static-scene fast path.
+- Crops overly wide media before resizing, avoiding work on pixels that will never enter the portrait frame.
+- Creates reusable, duration-limited portrait H.264 files under `assets/media/<project>/.render_cache/` for uploaded videos. The first render prepares the cache; later renders reuse it.
+- Probes MoviePy's FFmpeg binary for AMD `h264_amf`; when available it encodes with the `speed` preset. Other machines use `libx264` with `veryfast` and up to 12 CPU threads.
+- Does not apply the former full-resolution vignette overlay because its per-frame alpha composite materially slowed rendering.
+- Mixes narration/silence, ducked looping background music, and selected source-video audio into one duration-matched stereo track.
 
-The file contains a Pillow compatibility shim for MoviePy 1.0.3. Animation randomness is seeded, so automatic effect choices are repeatable. After rendering it attempts to open the output video using the operating system.
+Local profiling on the `My_test` project measured these frame-generation improvements:
 
+| Scene path | Before | After |
+| --- | ---: | ---: |
+| Static uploaded video | 1.65 fps | 5.92 fps |
+| Animated uploaded video | approximately 2 fps | 4.84 fps |
+| Animated image | 3.9 fps | 10.38 fps |
+| Static image | 3.9 fps | 34.49 fps |
+
+AMD encoding was verified through MoviePy with a real temporary MP4. The optimizations do not require AMD hardware; media caching, early crop, single resizing, and the CPU fallback work on Intel systems too.
 ## 7. Alternate and currently unused scripts
 
 ### `generate_images_online.py`
@@ -243,7 +250,7 @@ These observations explain the current design; they are not changes made to the 
 - Media count, prompt count, and scene count are not validated against each other. The renderer stops assigning scenes once it runs out of media.
 - Database log text is rewritten on nearly every output line during rendering, which can become expensive.
 - The renderer attempts to open the MP4 on the server machine, which is unusual for a server process.
-- There are no meaningful automated tests, no dependency lock/requirements file, and no repository metadata at `Y:\ai_videos_server`.
+- Automated Django coverage now exists for the guided creator, editor revisions, audio/timing behavior, optional subtitles, narration-free scene structure, media promotion, music selection, and renderer helpers.
 - Templates show signs of character-encoding corruption in some icons/arrows.
 - Django is configured for development rather than deployment (`DEBUG=True`, embedded secret, empty `ALLOWED_HOSTS`).
 
@@ -256,3 +263,21 @@ The system has three layers:
 3. **MoviePy renderer:** maps timed scenes to media, applies movement/captions, mixes audio, and encodes MP4.
 
 The most important architectural characteristic is that the layers are coupled through shared relative paths and a single mutable `.env`. Improvements to reliability, concurrency, retry behavior, validation, and extensibility will likely start by replacing that global implicit context with an explicit per-job configuration and workspace.
+
+## 13. Editor and scene controls implemented July 22, 2026
+
+Completed-job editing now supports:
+
+- Optional on-screen subtitles. A blank subtitle field hides captions for that scene without changing narration or timing.
+- Per-scene original video sound and background-music ducking.
+- Per-scene post-scene duration with no narration or captions.
+- Immediate browser preview of newly selected image and video files through object URLs.
+- For projects with no narration only: add, remove, move up, move down, and reorder scenes. New scenes require a positive duration and either uploaded media or a visual prompt.
+- Safe numeric media renumbering when narration-free scenes are reordered, with previous active and generated media archived in revision history.
+- Revision snapshots and render invalidation after structural edits.
+
+Narrated projects intentionally do not expose structural scene controls because the current continuous voiceover would need scene-level audio regeneration or segment remapping. Existing narration remains locked in edit mode.
+
+## 14. Verification status
+
+Focused Django suites cover scene timing, stereo silence, original audio settings, optional subtitles, narration-free creation, editor revisions, scene add/reorder, upload previews, and narrated-project restrictions. The latest focused structural suite passed 15 tests, and the final narration-free validation suite passed 3 tests.

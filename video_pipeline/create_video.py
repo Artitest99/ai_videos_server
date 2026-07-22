@@ -5,11 +5,12 @@ import random
 import sys
 import subprocess
 import math
+from pathlib import Path
 import numpy as np
 from helper import get_array_type, to_float
 from moviepy.editor import (
     ImageClip, AudioFileClip, CompositeVideoClip,
-    CompositeAudioClip, VideoFileClip, vfx
+    CompositeAudioClip, VideoFileClip, AudioClip, concatenate_audioclips, vfx
 )
 from moviepy.audio.fx.volumex import volumex
 from moviepy.audio.fx.all import audio_loop
@@ -29,6 +30,7 @@ except Exception:
     pass
 
 from config import BASE_DIR, FILE_NAME, MUSIC, FPS
+from moviepy.config import get_setting
 
 
 class VideoGenerator:
@@ -47,6 +49,7 @@ class VideoGenerator:
     SCRIPT_PATH = str(BASE_DIR / "scripts" / f"{FILE_NAME}.txt")
     VOICEOVER_PATH = str(BASE_DIR / "assets" / "voiceovers" / f"{FILE_NAME}.mp3")
     CAPTIONS_PATH = str(BASE_DIR / "captions" / f"captions_{FILE_NAME}.json")
+    PROMPTS_PATH = str(BASE_DIR / "prompts" / f"{FILE_NAME}.json")
     MEDIA_FOLDER = str(BASE_DIR / "assets" / "media" / FILE_NAME)
     BACKGROUND_MUSIC_PATH = str(BASE_DIR / "assets" / f"background_music_{MUSIC}.mp3")
     OUTPUT_PATH = str(BASE_DIR / "output" / f"{FILE_NAME}.mp4")
@@ -61,8 +64,12 @@ class VideoGenerator:
     FIRST_MEDIA_FADE = 0.10
     LAST_MEDIA_FADEOUT = 0.18
     DEFAULT_BG_MUSIC_VOLUME = 0.08
+    DUCKED_BG_MUSIC_VOLUME = 0.015
+    ORIGINAL_AUDIO_VOLUME = 1.0
     CAPTION_Y = int(VIDEO_HEIGHT * 0.61)
-    ADD_VIGNETTE = True
+    ADD_VIGNETTE = False
+    WORKING_OVERSCAN = 1.06
+    MAX_SOURCE_ASPECT_MULTIPLIER = 1.22
 
     IMAGE_EXTENSIONS = ('.png', '.jpg', '.jpeg', '.webp')
     VIDEO_EXTENSIONS = ('.mp4', '.mov', '.avi', '.webm', '.mkv')
@@ -270,35 +277,189 @@ class VideoGenerator:
         # Unknown effects fall back to a simple fade rather than movement.
         return base.set_position(("center", self.CAPTION_Y))
 
+    def build_scene_timeline(self, captions):
+        """Map legacy word timings to scenes, then insert each scene's requested hold."""
+        with open(self.PROMPTS_PATH, "r", encoding="utf-8") as f:
+            settings = json.load(f)
+        try:
+            with open(self.SCRIPT_PATH, "r", encoding="utf-8") as f:
+                script_scenes = re.split(r"\s*###\s*", f.read())
+        except OSError:
+            script_scenes = []
+
+        timeline = []
+        caption_index = 0
+        output_cursor = 0.0
+        for index, setting in enumerate(settings):
+            narration = setting.get("narration")
+            if narration is None:
+                narration = script_scenes[index] if index < len(script_scenes) else ""
+            word_count = len(re.findall(r"\b[\w'-]+\b", narration))
+            scene_captions = captions[caption_index:caption_index + word_count]
+            caption_index += word_count
+            hold = max(0.0, float(setting.get("hold_after_seconds", 0) or 0))
+
+            if scene_captions:
+                raw_start = scene_captions[0]["start"]
+                raw_end = scene_captions[-1]["end"]
+                narration_duration = max(0.01, raw_end - raw_start)
+                shift = output_cursor - raw_start
+                adjusted = []
+                for cue in scene_captions:
+                    shifted = dict(cue)
+                    shifted["start"] = max(output_cursor, cue["start"] + shift)
+                    shifted["end"] = max(shifted["start"] + 0.01, cue["end"] + shift)
+                    adjusted.append(shifted)
+            else:
+                raw_start = raw_end = None
+                narration_duration = 0.0
+                adjusted = []
+
+            # For a narration-free scene, the entered time is the scene's explicit duration.
+            visual_duration = narration_duration + hold
+            timeline.append({
+                "index": index,
+                "start": output_cursor,
+                "narration_end": output_cursor + narration_duration,
+                "end": output_cursor + visual_duration,
+                "raw_start": raw_start,
+                "raw_end": raw_end,
+                "captions": adjusted,
+                "use_original_audio": bool(setting.get("use_original_audio", False)),
+                "hold_after_seconds": hold,
+            })
+            output_cursor += visual_duration
+
+        return timeline
+
+    @staticmethod
+    def _silence(duration, fps=44100):
+        def make_silence(t):
+            if isinstance(t, np.ndarray):
+                return np.zeros((len(t), 2), dtype=float)
+            return np.zeros(2, dtype=float)
+        return AudioClip(make_silence, duration=duration, fps=fps)
+
+    def build_narration_track(self, raw_audio, timeline):
+        parts = []
+        for scene in timeline:
+            if raw_audio is not None and scene["raw_start"] is not None:
+                parts.append(raw_audio.subclip(scene["raw_start"], min(scene["raw_end"], raw_audio.duration)))
+            hold = scene["hold_after_seconds"]
+            if hold > 0:
+                parts.append(self._silence(hold))
+        if not parts:
+            return self._silence(max((scene["end"] for scene in timeline), default=0.01))
+        return concatenate_audioclips(parts)
+
+    def duck_background_music(self, music, intervals):
+        normal = self.DEFAULT_BG_MUSIC_VOLUME
+        ducked = self.DUCKED_BG_MUSIC_VOLUME
+        def apply_gain(get_frame, t):
+            frame = get_frame(t)
+            if isinstance(t, np.ndarray):
+                gain = np.full(t.shape, normal, dtype=float)
+                for start, end in intervals:
+                    gain[(t >= start) & (t < end)] = ducked
+                if getattr(frame, "ndim", 1) > 1:
+                    gain = gain[:, None]
+                return frame * gain
+            return frame * (ducked if any(start <= t < end for start, end in intervals) else normal)
+        return music.fl(apply_gain, keep_duration=True)
     # ----------------------------- media loading / motion -----------------------------
     def _load_media_clip(self, media_path, duration):
         is_video = self.is_video_file(media_path)
-
         if is_video:
             try:
-                clip = VideoFileClip(media_path).without_audio()
+                clip = VideoFileClip(media_path)
                 if clip.duration < duration:
                     clip = clip.fx(vfx.loop, duration=duration)
                 else:
                     clip = clip.subclip(0, duration)
-                return clip.set_duration(duration), True
+                source_audio = clip.audio
+                return clip.without_audio().set_duration(duration), True, source_audio
             except Exception as e:
                 print(f"Error loading video {media_path}: {e}")
-                return ColorClip((self.VIDEO_WIDTH, self.VIDEO_HEIGHT), color=(0, 0, 0)).set_duration(duration), False
-
+                fallback = ColorClip((self.VIDEO_WIDTH, self.VIDEO_HEIGHT), color=(0, 0, 0)).set_duration(duration)
+                return fallback, False, None
         try:
-            return ImageClip(media_path).set_duration(duration), False
+            return ImageClip(media_path).set_duration(duration), False, None
         except Exception as e:
             print(f"Error loading image {media_path}: {e}")
-            return ColorClip((self.VIDEO_WIDTH, self.VIDEO_HEIGHT), color=(0, 0, 0)).set_duration(duration), False
+            fallback = ColorClip((self.VIDEO_WIDTH, self.VIDEO_HEIGHT), color=(0, 0, 0)).set_duration(duration)
+            return fallback, False, None
+    def _crop_to_working_aspect(self, clip):
+        """Crop very wide sources before resizing so discarded pixels are never processed."""
+        target_aspect = self.VIDEO_WIDTH / self.VIDEO_HEIGHT
+        max_aspect = target_aspect * self.MAX_SOURCE_ASPECT_MULTIPLIER
+        if clip.w / max(1, clip.h) <= max_aspect:
+            return clip
+        crop_width = int(clip.h * max_aspect)
+        x1 = max(0, int((clip.w - crop_width) / 2))
+        return clip.crop(x1=x1, y1=0, width=crop_width, height=clip.h)
 
     def _resize_to_cover(self, clip, extra_scale=None):
-        """Resize media so that it covers the full 9:16 canvas with extra room for motion."""
         if extra_scale is None:
             extra_scale = self.MEDIA_EXTRA_SCALE
         scale = max(self.VIDEO_WIDTH / max(1, clip.w), self.VIDEO_HEIGHT / max(1, clip.h))
         return clip.resize(scale * extra_scale)
 
+    @staticmethod
+    def _encoder_available(encoder):
+        ffmpeg_binary = get_setting("FFMPEG_BINARY")
+        command = [
+            ffmpeg_binary, "-v", "error", "-f", "lavfi", "-i",
+            "color=c=black:s=64x64:d=0.05", "-c:v", encoder, "-f", "null", "NUL"
+        ]
+        try:
+            return subprocess.run(command, capture_output=True, timeout=10).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            return False
+
+    def _encoding_settings(self):
+        if not hasattr(self, "_cached_encoding_settings"):
+            self._cached_encoding_settings = (
+                ("h264_amf", "speed") if self._encoder_available("h264_amf")
+                else ("libx264", "veryfast")
+            )
+        return self._cached_encoding_settings
+
+    def _normalize_video_media(self, media_path, duration):
+        """Cache a short portrait H.264 working copy for efficient MoviePy decoding."""
+        source = Path(media_path)
+        cache_dir = source.parent / ".render_cache"
+        cache_dir.mkdir(exist_ok=True)
+        width = int(math.ceil(self.VIDEO_WIDTH * self.WORKING_OVERSCAN / 2) * 2)
+        height = int(math.ceil(self.VIDEO_HEIGHT * self.WORKING_OVERSCAN / 2) * 2)
+        duration_ms = max(1, int(math.ceil(duration * 1000)))
+        cache_name = f"{source.stem}_{source.stat().st_mtime_ns}_{duration_ms}_{width}x{height}.mp4"
+        destination = cache_dir / cache_name
+        if destination.exists() and destination.stat().st_size > 0:
+            return str(destination)
+
+        temporary = destination.with_suffix(".tmp.mp4")
+        codec, preset = self._encoding_settings()
+        ffmpeg_binary = get_setting("FFMPEG_BINARY")
+        command = [
+            ffmpeg_binary, "-y", "-v", "error", "-i", str(source),
+            "-t", f"{duration:.3f}",
+            "-vf", f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}",
+            "-map", "0:v:0", "-map", "0:a?", "-c:v", codec,
+            "-preset", preset, "-b:v", "8M", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(temporary),
+        ]
+        result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode != 0 and codec != "libx264":
+            command[command.index(codec)] = "libx264"
+            command[command.index(preset)] = "veryfast"
+            result = subprocess.run(command, capture_output=True, text=True)
+        if result.returncode != 0:
+            temporary.unlink(missing_ok=True)
+            print(f"Warning: video normalization failed; using source media. {result.stderr[-500:]}")
+            return str(source)
+        temporary.replace(destination)
+        print(f"Prepared render cache: {destination.name}")
+        return str(destination)
     def _normalize_animation_name(self, animation):
         if not animation:
             return "slow_push"
@@ -326,19 +487,20 @@ class VideoGenerator:
         }
         return aliases.get(animation, animation)
 
-    def _motion_clip(self, clip, animation, duration):
-        """Apply professional Ken Burns style motion.
-
-        The returned clip always remains larger than the canvas and CompositeVideoClip
-        crops it automatically to 1080x1920. This avoids black borders.
-        """
+    def _motion_clip(self, clip, animation, duration, extra_scale=None):
+        """Crop early and apply cover sizing plus motion in one resize operation."""
         animation = self._normalize_animation_name(animation)
-        base_w, base_h = clip.w, clip.h
+        clip = self._crop_to_working_aspect(clip)
         W, H = self.VIDEO_WIDTH, self.VIDEO_HEIGHT
+        base_w, base_h = clip.w, clip.h
+        if extra_scale is None:
+            extra_scale = self.MEDIA_EXTRA_SCALE
+        cover_scale = max(W / max(1, base_w), H / max(1, base_h)) * extra_scale
 
-        # z_start/z_end are relative to the already-covering base clip.
+        if animation == "static":
+            return clip.resize(cover_scale).set_position("center")
+
         presets = {
-            "static":          (1.020, 1.020,  0.00,  0.00,  0.00,  0.00),
             "slow_push":       (1.000, 1.060,  0.00,  0.00,  0.04, -0.04),
             "slow_pull":       (1.070, 1.000,  0.00,  0.00, -0.02,  0.03),
             "cinematic_pull":  (1.100, 1.015,  0.08, -0.08, -0.03,  0.03),
@@ -360,41 +522,39 @@ class VideoGenerator:
                 p = self._ease_out_back(min(t / 0.28, 1.0), c1=0.9)
             return self._lerp(z0, z1, p)
 
+        def scale_at(t):
+            return cover_scale * z_at(t)
+
         def position_at(t):
             p = self._ease_in_out_cubic(t / max(duration, 0.001))
-            z = z_at(t)
-            w = base_w * z
-            h = base_h * z
-            max_x = max(0, (w - W) / 2.0)
-            max_y = max(0, (h - H) / 2.0)
-
+            scale = scale_at(t)
+            width = base_w * scale
+            height = base_h * scale
+            max_x = max(0, (width - W) / 2.0)
+            max_y = max(0, (height - H) / 2.0)
             x_factor = self._lerp(xf0, xf1, p)
             y_factor = self._lerp(yf0, yf1, p)
-
-            # Micro shake is deterministic and decays quickly. It is intentionally tiny.
             if animation == "micro_shake":
                 decay = max(0.0, 1.0 - t / 0.45)
                 x_factor += 0.06 * math.sin(2 * math.pi * 12 * t) * decay
                 y_factor += 0.04 * math.sin(2 * math.pi * 15 * t + 0.7) * decay
+            return (
+                (W - width) / 2.0 + x_factor * max_x,
+                (H - height) / 2.0 + y_factor * max_y,
+            )
 
-            x = (W - w) / 2.0 + x_factor * max_x
-            y = (H - h) / 2.0 + y_factor * max_y
-            return (x, y)
-
-        return clip.resize(z_at).set_position(position_at)
-
-    def create_media_effect(self, media_path, start_time, end_time, animation, clip_index=0):
+        return clip.resize(scale_at).set_position(position_at)
+    def create_media_effect(self, media_path, start_time, end_time, animation, clip_index=0, use_original_audio=False):
         """Create a media clip with professional Shorts motion."""
         raw_duration = max(0.01, end_time - start_time)
         overlap = min(self.MEDIA_CROSSFADE, raw_duration * 0.25)
         actual_start = max(0.0, start_time - (overlap if clip_index > 0 else 0.0))
         duration = max(0.01, end_time - actual_start)
 
-        media_clip, is_video = self._load_media_clip(media_path, duration)
-        # Videos usually already have motion; use a slightly smaller extra scale for them.
-        cover_extra = 1.06 if is_video else self.MEDIA_EXTRA_SCALE
-        media_clip = self._resize_to_cover(media_clip, extra_scale=cover_extra)
-        media_clip = self._motion_clip(media_clip, animation, duration)
+        render_media_path = self._normalize_video_media(media_path, duration) if self.is_video_file(media_path) else media_path
+        media_clip, is_video, source_audio = self._load_media_clip(render_media_path, duration)
+        cover_extra = self.WORKING_OVERSCAN if is_video else self.MEDIA_EXTRA_SCALE
+        media_clip = self._motion_clip(media_clip, animation, duration, extra_scale=cover_extra)
         media_clip = media_clip.set_start(actual_start).set_duration(duration).set_end(end_time)
 
         if clip_index == 0:
@@ -402,7 +562,19 @@ class VideoGenerator:
         else:
             media_clip = media_clip.crossfadein(overlap)
 
-        return media_clip
+        original_audio = None
+        if use_original_audio and is_video and source_audio is not None:
+            original_audio = source_audio.subclip(0, min(raw_duration, source_audio.duration))
+            if original_audio.duration < raw_duration:
+                original_audio = original_audio.fx(audio_loop, duration=raw_duration)
+            original_audio = original_audio.volumex(self.ORIGINAL_AUDIO_VOLUME).set_start(start_time).set_duration(raw_duration)
+            try:
+                original_audio = original_audio.audio_fadein(0.08).audio_fadeout(0.12)
+            except Exception:
+                pass
+        elif use_original_audio and is_video:
+            print(f"Warning: {media_path} has no usable original audio stream.")
+        return media_clip, original_audio
 
     def create_vignette_clip(self, duration):
         """A subtle dark-edge overlay. It makes Shorts captions and subjects read better."""
@@ -430,170 +602,132 @@ class VideoGenerator:
         except Exception as e:
             print(f"⚠️ Could not open video automatically: {e}")
 
-    def _load_audio(self):
-        audio = AudioFileClip(self.VOICEOVER_PATH)
+    def _load_audio(self, duration, duck_intervals):
+        raw_audio = AudioFileClip(self.VOICEOVER_PATH) if os.path.exists(self.VOICEOVER_PATH) else None
         bg_music = AudioFileClip(self.BACKGROUND_MUSIC_PATH)
-
         try:
-            if bg_music.duration < audio.duration:
-                bg_music = bg_music.fx(audio_loop, duration=audio.duration)
+            if bg_music.duration < duration:
+                bg_music = bg_music.fx(audio_loop, duration=duration)
             else:
-                bg_music = bg_music.subclip(0, audio.duration)
+                bg_music = bg_music.subclip(0, duration)
         except Exception:
-            # Compatibility fallback: set_duration gives silence after the source ends on many MoviePy versions.
-            bg_music = bg_music.set_duration(audio.duration)
-
+            bg_music = bg_music.set_duration(duration)
+        bg_music = self.duck_background_music(bg_music, duck_intervals)
         try:
-            bg_music = bg_music.volumex(self.DEFAULT_BG_MUSIC_VOLUME).audio_fadein(0.8).audio_fadeout(1.2)
+            bg_music = bg_music.audio_fadein(0.8).audio_fadeout(1.2)
         except Exception:
-            bg_music = bg_music.volumex(self.DEFAULT_BG_MUSIC_VOLUME)
-
-        return audio, bg_music
-
+            pass
+        return raw_audio, bg_music
     # ----------------------------- main generation -----------------------------
     def generate_video(self):
         os.makedirs(os.path.dirname(self.OUTPUT_PATH), exist_ok=True)
-
         captions = self.parse_captions_json(self.CAPTIONS_PATH)
-        if not captions:
-            print("No captions found. Check the captions JSON path/content.")
+        try:
+            timeline = self.build_scene_timeline(captions)
+        except Exception as e:
+            print(f"Error building scene timeline: {e}")
+            return
+        if not timeline or timeline[-1]["end"] <= 0:
+            print("No positive-duration scenes were found.")
             return
 
         try:
-            media_files = [
-                f for f in os.listdir(self.MEDIA_FOLDER)
-                if self.is_image_file(f) or self.is_video_file(f)
-            ]
             media_files = sorted(
-                media_files,
+                [f for f in os.listdir(self.MEDIA_FOLDER) if self.is_image_file(f) or self.is_video_file(f)],
                 key=lambda x: int(''.join(filter(str.isdigit, os.path.splitext(x)[0])) or 0)
             )
-
-            print(f"Found {len(media_files)} media files")
-            print(f"Images: {sum(1 for f in media_files if self.is_image_file(f))}")
-            print(f"Videos: {sum(1 for f in media_files if self.is_video_file(f))}")
         except Exception as e:
             print(f"Error loading media files: {e}")
             return
-
-        if not media_files:
-            print("No media files found. Check MEDIA_FOLDER.")
-            return
-
-        try:
-            audio, bg_music = self._load_audio()
-        except Exception as e:
-            print(f"Error loading audio files: {e}")
+        if len(media_files) < len(timeline):
+            print(f"Not enough media files: found {len(media_files)} for {len(timeline)} scenes.")
             return
 
         clips = []
         caption_clips = []
-        media_index = 0
-        segment = []
-
+        original_audio_clips = []
+        duck_intervals = []
         image_effects = [
             "slow_push", "slow_pull", "pan_zoom_left", "pan_zoom_right",
             "drift_up", "drift_down", "cinematic_pull"
         ]
         video_effects = ["static", "slow_push", "slow_pull"]
 
-        for i, cap in enumerate(captions):
-            segment.append(cap)
-            is_last_caption = i == len(captions) - 1
+        for scene in timeline:
+            index = scene["index"]
+            media_name = media_files[index]
+            media_path = os.path.join(self.MEDIA_FOLDER, media_name)
+            is_video = self.is_video_file(media_name)
+            animation = random.choice(video_effects if is_video else image_effects)
+            if index == 0:
+                animation = "slow_push"
+            elif index == len(timeline) - 1:
+                animation = "cinematic_pull"
+            print(
+                f"\n-- Adding {'video' if is_video else 'image'}: {media_name} "
+                f"from {scene['start']:.2f}s to {scene['end']:.2f}s | effect: {animation}"
+            )
+            media_clip, original_audio = self.create_media_effect(
+                media_path,
+                scene["start"],
+                scene["end"],
+                animation,
+                clip_index=index,
+                use_original_audio=scene["use_original_audio"],
+            )
+            clips.append(media_clip)
+            if original_audio is not None:
+                original_audio_clips.append(original_audio)
+                duck_intervals.append((scene["start"], scene["end"]))
 
-            if cap.get("media_transition", False) or is_last_caption:
-                if media_index >= len(media_files):
-                    print("Warning: more caption media transitions than media files. Stopping media assignment.")
-                    break
+            for cue in scene["captions"]:
+                if cue["text"].strip():
+                    image = self.create_caption_image(
+                        cue["text"], cue.get("text_bold"),
+                        cue.get("bold_color", "yellow"), cue.get("border_color", "black")
+                    )
+                    caption_clip = self.create_caption_animation(cue, image, cue.get("caption_effect"))
+                    if caption_clip:
+                        caption_clips.append(caption_clip)
 
-                media_start = segment[0]["start"]
-                media_end = segment[-1]["end"]
-                media_path = os.path.join(self.MEDIA_FOLDER, media_files[media_index])
-
-                is_video = self.is_video_file(media_files[media_index])
-                media_type = "video" if is_video else "image"
-
-                if cap.get('effect') is not None:
-                    animation = cap['effect']
-                else:
-                    animation = random.choice(video_effects if is_video else image_effects)
-                    if media_index == 0:
-                        animation = "slow_push"
-                    elif media_index >= len(media_files) - 1:
-                        animation = "cinematic_pull"
-
-                print(
-                    f"\n-- Adding {media_type}: {media_files[media_index]} "
-                    f"from {media_start:.2f}s to {media_end:.2f}s | effect: {animation}"
-                )
-
-                media_clip = self.create_media_effect(
-                    media_path,
-                    media_start,
-                    media_end,
-                    animation,
-                    clip_index=media_index
-                )
-                clips.append(media_clip)
-
-                for seg in segment:
-                    if seg["text"].strip():
-                        img_array = self.create_caption_image(
-                            seg["text"],
-                            seg.get("text_bold"),
-                            seg.get("bold_color", "yellow"),
-                            seg.get("border_color", "black")
-                        )
-                        cap_clip = self.create_caption_animation(seg, img_array, seg.get("caption_effect"))
-                        if cap_clip:
-                            caption_clips.append(cap_clip)
-
-                media_index += 1
-                segment = []
-
-        if not clips:
-            print("No clips were created. Check your input files and captions.")
-            return
-
+        total_duration = timeline[-1]["end"]
         try:
-            total_duration = max(audio.duration, max(c.end for c in clips))
+            raw_audio, bg_music = self._load_audio(total_duration, duck_intervals)
+            narration = self.build_narration_track(raw_audio, timeline).set_duration(total_duration)
             overlay_clips = [self.create_vignette_clip(total_duration)] if self.ADD_VIGNETTE else []
-
             full_video = CompositeVideoClip(
                 clips + overlay_clips + caption_clips,
                 size=(self.VIDEO_WIDTH, self.VIDEO_HEIGHT)
             ).set_duration(total_duration)
+            full_audio = CompositeAudioClip(
+                [narration, bg_music.set_duration(total_duration)] + original_audio_clips
+            ).set_duration(total_duration)
+            final_video = full_video.set_audio(full_audio).set_duration(total_duration)
 
-            full_audio = CompositeAudioClip([audio, bg_music.set_duration(audio.duration)]).set_duration(audio.duration)
-            final_video = full_video.set_audio(full_audio).set_duration(audio.duration)
-
-            print(f"Rendering video to {self.OUTPUT_PATH}...")
+            video_codec, video_preset = self._encoding_settings()
+            print(f"Rendering video to {self.OUTPUT_PATH} with {video_codec}/{video_preset}...")
             final_video.write_videofile(
                 self.OUTPUT_PATH,
                 fps=to_float(FPS),
-                codec="libx264",
+                codec=video_codec,
                 audio_codec="aac",
-                preset="medium",
+                preset=video_preset,
                 bitrate="9000k",
                 audio_bitrate="192k",
-                threads=4,
+                threads=max(4, min(12, os.cpu_count() or 4)),
                 ffmpeg_params=["-pix_fmt", "yuv420p", "-movflags", "+faststart"],
                 logger='bar'
             )
-
-            try:
-                final_video.close()
-                full_video.close()
-                audio.close()
-                bg_music.close()
-            except Exception:
-                pass
-
+            final_video.close()
+            full_video.close()
+            narration.close()
+            if raw_audio is not None:
+                raw_audio.close()
+            bg_music.close()
             print("Video generation complete!")
         except Exception as e:
             print(f"Error creating video: {e}")
-
-
+            raise
 def main():
     video_generator = VideoGenerator()
     video_generator.generate_video()
