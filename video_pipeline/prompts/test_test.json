@@ -1,0 +1,12 @@
+[
+  {
+    "filename": "scene_01.png",
+    "prompt": "",
+    "narration": "",
+    "use_original_audio": true,
+    "fit_with_borders": true,
+    "hold_after_seconds": 9.0,
+    "video_start_seconds": 4.0,
+    "video_end_seconds": 13.0
+  }
+]

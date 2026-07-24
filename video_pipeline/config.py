@@ -48,3 +48,4 @@ def require_setting(name: str) -> str:
 FILE_NAME = require_setting("FILE_NAME")
 MUSIC = get_setting("MUSIC", "1") or "1"
 FPS = get_setting("FPS", "30") or "30"
+VOICE = get_setting("VOICE", "Rachel_other") or "Rachel_other"

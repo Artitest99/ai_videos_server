@@ -7,7 +7,7 @@ from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
-from moviepy.editor import AudioClip, CompositeAudioClip
+from moviepy.editor import AudioClip, CompositeAudioClip, ImageClip
 from django.test import TestCase, override_settings
 
 from helper import get_array_type, to_float
@@ -16,6 +16,8 @@ from pipeline.models import BackgroundMusicAsset, VideoEditRevision, VideoJob
 from pipeline.tasks import run_video_pipeline, update_env_variable
 import prepare_images
 from create_video import VideoGenerator
+from voice_config import DEFAULT_VOICE_KEY, VOICES, resolve_voice_id
+from pipeline.voice_samples import VOICE_SAMPLE_TEXT
 
 
 class VideoJobModelTests(TestCase):
@@ -25,6 +27,7 @@ class VideoJobModelTests(TestCase):
         self.assertEqual(job.status, "pending")
         self.assertEqual(job.progress, 0)
         self.assertEqual(job.current_script, "")
+        self.assertEqual(job.voice_key, DEFAULT_VOICE_KEY)
 
 
 class EnvironmentUpdateTests(TestCase):
@@ -69,6 +72,7 @@ class PipelineRunnerTests(TestCase):
         job.refresh_from_db()
         self.assertEqual(job.status, "failed")
         update_env_mock.assert_any_call("FILE_NAME", "runner_test", update_env_mock.call_args_list[0].args[2])
+        update_env_mock.assert_any_call("VOICE", DEFAULT_VOICE_KEY, update_env_mock.call_args_list[0].args[2])
 
     @patch("pipeline.tasks.subprocess.run")
     @patch("pipeline.tasks.update_env_variable")
@@ -117,6 +121,15 @@ class VideoProjectSubmissionFormTests(TestCase):
 
     def test_accepts_valid_scene_and_prompt_input(self):
         self.assertTrue(self.make_form().is_valid())
+
+    def test_accepts_a_supported_voice_and_rejects_an_unknown_voice(self):
+        form = self.make_form(voice_key="George")
+        self.assertTrue(form.is_valid())
+        self.assertEqual(form.cleaned_data["voice_key"], "George")
+
+        invalid_form = self.make_form(file_name="another_project", voice_key="not-a-real-voice")
+        self.assertFalse(invalid_form.is_valid())
+        self.assertIn("voice_key", invalid_form.errors)
 
     def test_rejects_unsafe_project_name(self):
         form = self.make_form(file_name="../outside")
@@ -187,6 +200,8 @@ class GuidedCreatorViewTests(TestCase):
         response = self.client.get("/")
 
         self.assertContains(response, "Build your scenes")
+        self.assertContains(response, "Eddie")
+        self.assertContains(response, "Press play to hear")
         self.assertNotContains(response, "JSON Content")
         self.assertNotContains(response, "### markers")
 
@@ -206,6 +221,7 @@ class GuidedCreatorViewTests(TestCase):
                         "file_name": "guided_project",
                         "fps": 30,
                         "music_track": "1",
+                        "voice_key": "George",
                         "scenes_json": json.dumps(scenes),
                     },
                 )
@@ -224,18 +240,21 @@ class GuidedCreatorViewTests(TestCase):
                     {
                         "filename": "scene_01.png", "prompt": scenes[0]["prompt"],
                         "narration": scenes[0]["narration"],
-                        "use_original_audio": False, "hold_after_seconds": 0.0,
+                        "use_original_audio": False, "fit_with_borders": False, "hold_after_seconds": 0.0,
+                        "video_start_seconds": 0.0, "video_end_seconds": None,
                     },
                     {
                         "filename": "scene_02.png", "prompt": scenes[1]["prompt"],
                         "narration": scenes[1]["narration"],
-                        "use_original_audio": False, "hold_after_seconds": 0.0,
+                        "use_original_audio": False, "fit_with_borders": False, "hold_after_seconds": 0.0,
+                        "video_start_seconds": 0.0, "video_end_seconds": None,
                     },
                 ],
             )
             thread_class.assert_called_once()
             thread_class.return_value.start.assert_called_once()
             self.assertEqual(VideoJob.objects.get(file_name="guided_project").music_track, "1")
+            self.assertEqual(VideoJob.objects.get(file_name="guided_project").voice_key, "George")
 
 
 class JobDetailActionsTests(TestCase):
@@ -609,6 +628,71 @@ class MusicSelectionTests(TestCase):
             self.assertEqual(job.music_track, "2")
             self.assertTrue(job.render_required)
 
+
+class MusicAndVoiceSelectionTests(TestCase):
+    def test_shared_voice_registry_resolves_existing_ids(self):
+        self.assertEqual(resolve_voice_id("George"), VOICES["George"])
+        self.assertEqual(resolve_voice_id("Eddie"), "VsQmyFHffusQDewmHB5v")
+        with self.assertRaises(ValueError):
+            resolve_voice_id("not-a-real-voice")
+
+    @patch("pipeline.voice_samples.requests.post")
+    def test_voice_preview_generates_constant_script_once_and_reuses_cache(self, post_mock):
+        provider_response = MagicMock(content=b"sample mp3")
+        provider_response.raise_for_status.return_value = None
+        post_mock.return_value = provider_response
+        with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
+            (Path(directory) / ".env").write_text("ELEVENLABS_API_KEY=test-key\n", encoding="utf-8")
+
+            first = self.client.get("/voice/Eddie/sample/")
+            self.assertEqual(first.status_code, 200)
+            self.assertEqual(b"".join(first.streaming_content), b"sample mp3")
+            first.close()
+            second = self.client.get("/voice/Eddie/sample/")
+            self.assertEqual(second.status_code, 200)
+            second.close()
+
+            self.assertEqual(post_mock.call_count, 1)
+            self.assertEqual(post_mock.call_args.kwargs["json"]["text"], VOICE_SAMPLE_TEXT)
+            self.assertIn(VOICES["Eddie"], post_mock.call_args.args[0])
+            self.assertEqual(
+                (Path(directory) / "assets" / "voice_samples" / "Eddie.mp3").read_bytes(),
+                b"sample mp3",
+            )
+
+    def test_voice_preview_rejects_unknown_voice(self):
+        response = self.client.get("/voice/not-a-real-voice/sample/")
+        self.assertEqual(response.status_code, 404)
+
+    def test_editor_voice_change_invalidates_audio_and_restarts_from_voiceover(self):
+        with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
+            helper = ExistingVideoEditorTests()
+            helper.create_legacy_project(directory)
+            voiceover_dir = Path(directory) / "assets" / "voiceovers"
+            voiceover_dir.mkdir(parents=True)
+            audio_path = voiceover_dir / "editable.mp3"
+            timing_path = voiceover_dir / "captions_editable.json"
+            audio_path.write_bytes(b"old voice")
+            timing_path.write_text("[]", encoding="utf-8")
+            job = VideoJob.objects.create(file_name="editable", status="completed")
+
+            response = self.client.post(f"/job/{job.id}/edit/", {
+                "voice_key": "George",
+                "music_track": "1",
+                "prompt_0": "First visual",
+                "subtitle_0": "Hello world",
+                "prompt_1": "Second visual",
+                "subtitle_1": "Goodbye moon",
+            })
+
+            self.assertEqual(response.status_code, 302)
+            job.refresh_from_db()
+            self.assertEqual(job.voice_key, "George")
+            self.assertEqual(job.render_start_script, "generate_voiceover_with_timing.py")
+            self.assertFalse(audio_path.exists())
+            self.assertFalse(timing_path.exists())
+            self.assertEqual(job.edit_revisions.get(number=1).snapshot["voice_key"], "George")
+
     def test_uploaded_music_is_saved_and_available_to_future_projects(self):
         with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
             assets_dir = Path(directory) / "assets"
@@ -687,6 +771,39 @@ class SceneAudioAndHoldFeatureTests(TestCase):
             self.assertTrue(form.cleaned_data["scenes_json"][0]["use_original_audio"])
             self.assertEqual(form.cleaned_data["scenes_json"][0]["hold_after_seconds"], 2.5)
 
+    def test_form_preserves_fit_mode_and_rounds_time_to_hundredths(self):
+        with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
+            assets = Path(directory) / "assets"
+            assets.mkdir()
+            (assets / "background_music_1.mp3").write_bytes(b"music")
+            form = VideoProjectSubmissionForm(data={
+                "file_name": "precise_fit",
+                "fps": 30,
+                "music_track": "1",
+                "scenes_json": json.dumps([{
+                    "narration": "",
+                    "prompt": "Wide view",
+                    "use_original_audio": False,
+                    "fit_with_borders": True,
+                    "hold_after_seconds": 5.559,
+                }]),
+            })
+            self.assertTrue(form.is_valid(), form.errors)
+            scene = form.cleaned_data["scenes_json"][0]
+            self.assertEqual(scene["hold_after_seconds"], 5.56)
+            self.assertTrue(scene["fit_with_borders"])
+
+    def test_fit_mode_preserves_wide_image_with_black_borders(self):
+        generator = VideoGenerator()
+        wide_pixels = np.full((90, 160, 3), 255, dtype=np.uint8)
+        source = ImageClip(wide_pixels).set_duration(1)
+        fitted = generator._motion_clip(source, "slow_push", 1, fit_with_borders=True)
+        frame = fitted.get_frame(0.5)
+        self.assertEqual(frame.shape[:2], (generator.VIDEO_HEIGHT, generator.VIDEO_WIDTH))
+        self.assertTrue(np.all(frame[0, generator.VIDEO_WIDTH // 2] == 0))
+        self.assertTrue(np.all(frame[generator.VIDEO_HEIGHT // 2, generator.VIDEO_WIDTH // 2] == 255))
+        fitted.close()
+        source.close()
     def test_form_allows_silent_scene_with_explicit_duration(self):
         with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
             assets = Path(directory) / "assets"
@@ -746,3 +863,116 @@ class SceneAudioAndHoldFeatureTests(TestCase):
             self.assertEqual(timeline[1]["captions"][0]["start"], 3)
             self.assertEqual(timeline[1]["end"], 5.0)
             self.assertTrue(timeline[0]["use_original_audio"])
+
+    def test_negative_caption_offset_keeps_narration_instead_of_using_negative_subclip(self):
+        generator = VideoGenerator()
+        raw_audio = MagicMock(duration=2.0)
+        narration_segment = MagicMock(duration=0.9)
+        raw_audio.subclip.return_value = narration_segment
+        timeline = [{
+            "raw_start": -0.05,
+            "raw_end": 0.9,
+            "hold_after_seconds": 0,
+            "end": 0.95,
+        }]
+
+        with patch("create_video.concatenate_audioclips") as concatenate:
+            generator.build_narration_track(raw_audio, timeline)
+
+        raw_audio.subclip.assert_called_once_with(0.0, 0.9)
+        parts = concatenate.call_args.args[0]
+        self.assertEqual(len(parts), 2)
+        self.assertAlmostEqual(parts[0].duration, 0.05)
+
+
+class VideoRangeSelectionTests(TestCase):
+    def test_form_persists_two_decimal_video_range_and_rejects_reversed_range(self):
+        with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
+            assets = Path(directory) / "assets"
+            assets.mkdir()
+            (assets / "background_music_1.mp3").write_bytes(b"music")
+            scene = {
+                "narration": "A narrated scene",
+                "prompt": "A video",
+                "hold_after_seconds": 0,
+                "video_start_seconds": 1.234,
+                "video_end_seconds": 5.678,
+            }
+            form = VideoProjectSubmissionForm(data={
+                "file_name": "trimmed_video", "fps": 30, "music_track": "1",
+                "scenes_json": json.dumps([scene]),
+            })
+            self.assertTrue(form.is_valid(), form.errors)
+            cleaned = form.cleaned_data["scenes_json"][0]
+            self.assertEqual(cleaned["video_start_seconds"], 1.23)
+            self.assertEqual(cleaned["video_end_seconds"], 5.68)
+
+            scene["video_end_seconds"] = 1.0
+            invalid = VideoProjectSubmissionForm(data={
+                "file_name": "reversed_video", "fps": 30, "music_track": "1",
+                "scenes_json": json.dumps([scene]),
+            })
+            self.assertFalse(invalid.is_valid())
+            self.assertIn("must be after", invalid.errors["scenes_json"][0])
+
+    def test_creator_exposes_live_video_range_preview(self):
+        response = self.client.get("/")
+        self.assertContains(response, "Choose the part of the video to use")
+        self.assertContains(response, "video-range-preview")
+        self.assertContains(response, "video_start_seconds")
+
+    def test_timeline_carries_video_range_to_renderer(self):
+        with TemporaryDirectory() as directory:
+            base = Path(directory)
+            prompts = base / "prompts.json"
+            script = base / "script.txt"
+            prompts.write_text(json.dumps([{
+                "narration": "Hello world", "hold_after_seconds": 1,
+                "video_start_seconds": 2.25, "video_end_seconds": 6.75,
+            }]), encoding="utf-8")
+            script.write_text("Hello world", encoding="utf-8")
+            generator = VideoGenerator()
+            generator.PROMPTS_PATH = str(prompts)
+            generator.SCRIPT_PATH = str(script)
+            timeline = generator.build_scene_timeline([
+                {"text": "Hello", "start": 0, "end": .5},
+                {"text": "world", "start": .5, "end": 1},
+            ])
+            self.assertEqual(timeline[0]["video_start_seconds"], 2.25)
+            self.assertEqual(timeline[0]["video_end_seconds"], 6.75)
+
+    @patch("create_video.VideoFileClip")
+    def test_video_loader_trims_before_scene_looping(self, video_file_clip):
+        source = MagicMock(duration=10)
+        trimmed = MagicMock(duration=3)
+        trimmed.audio = MagicMock()
+        trimmed.without_audio.return_value.set_duration.return_value = MagicMock()
+        source.subclip.return_value = trimmed
+        video_file_clip.return_value = source
+        generator = VideoGenerator()
+
+        generator._load_media_clip("source.mp4", 2, 2, 5)
+
+        source.subclip.assert_called_once_with(2.0, 5.0)
+
+    def test_editor_saves_range_for_existing_video(self):
+        with TemporaryDirectory() as directory, override_settings(BASE_DIR=Path(directory)):
+            helper = ExistingVideoEditorTests()
+            media_dir = helper.create_legacy_project(directory)
+            (media_dir / "0.png").unlink()
+            (media_dir / "0.mp4").write_bytes(b"video placeholder")
+            job = VideoJob.objects.create(file_name="editable", status="completed")
+
+            response = self.client.post(f"/job/{job.id}/edit/", {
+                "music_track": "1",
+                "prompt_0": "First visual", "subtitle_0": "Hello world",
+                "video_start_seconds_0": "1.25", "video_end_seconds_0": "4.75",
+                "prompt_1": "Second visual", "subtitle_1": "Goodbye moon",
+            })
+
+            self.assertEqual(response.status_code, 302)
+            prompts = json.loads(
+                (Path(directory) / "prompts" / "editable.json").read_text(encoding="utf-8")
+            )
+            self.assertEqual(prompts[0]["video_start_seconds"], 1.25)
+            self.assertEqual(prompts[0]["video_end_seconds"], 4.75)

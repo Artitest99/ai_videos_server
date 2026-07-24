@@ -1,18 +1,24 @@
 import json
+import math
 import mimetypes
 import shutil
 import threading
 from pathlib import Path
+
+import requests
 
 from django.conf import settings
 from django.http import FileResponse, Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 
-from .editor import MEDIA_EXTENSIONS, load_editor_project, update_caption_words
-from .forms import MAX_SCENES, MAX_UPLOAD_SIZE, VideoProjectSubmissionForm
+from voice_config import DEFAULT_VOICE_KEY, VOICE_CHOICES, VOICES
+
+from .editor import MEDIA_EXTENSIONS, is_media_16_9, load_editor_project, update_caption_words
+from .forms import MAX_SCENES, MAX_UPLOAD_SIZE, MAX_VIDEO_TIMESTAMP_SECONDS, VideoProjectSubmissionForm
 from .models import BackgroundMusicAsset, VideoEditRevision, VideoJob
 from .tasks import run_video_pipeline
+from .voice_samples import ensure_voice_sample
 
 
 def available_music_tracks():
@@ -28,6 +34,25 @@ def available_music_tracks():
     return sorted(tracks, key=lambda track: int(track["id"]))
 
 
+def parse_scene_video_range(request, suffix, scene_number, errors):
+    """Parse an optional [start, end] range while retaining old full-video projects."""
+    raw_start = request.POST.get(f"video_start_seconds_{suffix}", "0").strip()
+    raw_end = request.POST.get(f"video_end_seconds_{suffix}", "").strip()
+    try:
+        start = float(raw_start or 0)
+        end = float(raw_end) if raw_end else None
+    except ValueError:
+        errors.append(f"Scene {scene_number} has an invalid video range.")
+        return 0.0, None
+    if not math.isfinite(start) or not 0 <= start <= MAX_VIDEO_TIMESTAMP_SECONDS:
+        errors.append(f"Scene {scene_number} video start time is invalid.")
+    if end is not None and (not math.isfinite(end) or end > MAX_VIDEO_TIMESTAMP_SECONDS or end <= start):
+        errors.append(f"Scene {scene_number} video end time must be after its start time.")
+    if end is None and start > 0:
+        errors.append(f"Scene {scene_number} needs a video end time after its start time.")
+    return round(max(0, start), 2), round(end, 2) if end is not None else None
+
+
 def index(request):
     form = VideoProjectSubmissionForm(request.POST or None, request.FILES or None)
 
@@ -35,6 +60,7 @@ def index(request):
         file_name = form.cleaned_data["file_name"]
         fps = str(form.cleaned_data["fps"])
         music_track = form.cleaned_data["music_track"]
+        voice_key = form.cleaned_data["voice_key"]
         scenes = form.cleaned_data["scenes_json"]
 
         scripts_dir = settings.BASE_DIR / "scripts"
@@ -51,7 +77,10 @@ def index(request):
                 "prompt": scene["prompt"],
                 "narration": scene["narration"],
                 "use_original_audio": scene["use_original_audio"],
+                "fit_with_borders": scene["fit_with_borders"],
                 "hold_after_seconds": scene["hold_after_seconds"],
+                "video_start_seconds": scene["video_start_seconds"],
+                "video_end_seconds": scene["video_end_seconds"],
             }
             for index, scene in enumerate(scenes, start=1)
         ]
@@ -70,14 +99,22 @@ def index(request):
                     destination.write(chunk)
 
         job = VideoJob.objects.create(
-            file_name=file_name, fps=int(fps), music_track=music_track, status="pending"
+            file_name=file_name,
+            fps=int(fps),
+            music_track=music_track,
+            voice_key=voice_key,
+            status="pending",
         )
         thread = threading.Thread(target=run_video_pipeline, args=(job.id, fps), daemon=True)
         thread.start()
         return redirect("job_status", job_id=job.id)
 
     recent_jobs = VideoJob.objects.all().order_by("-created_at")[:10]
-    initial_scenes = [{"narration": "", "prompt": "", "use_original_audio": False, "hold_after_seconds": 0}]
+    initial_scenes = [{
+        "narration": "", "prompt": "", "use_original_audio": False,
+        "fit_with_borders": False, "hold_after_seconds": 0,
+        "video_start_seconds": 0, "video_end_seconds": None,
+    }]
     if request.method == "POST":
         try:
             submitted_scenes = json.loads(request.POST.get("scenes_json", "[]"))
@@ -94,6 +131,8 @@ def index(request):
             "initial_scenes": initial_scenes,
             "music_tracks": available_music_tracks(),
             "selected_music": request.POST.get("music_track", "1"),
+            "voice_choices": VOICE_CHOICES,
+            "selected_voice": request.POST.get("voice_key", DEFAULT_VOICE_KEY),
         },
     )
 
@@ -166,7 +205,7 @@ def retry_job(request, job_id):
     return redirect("job_status", job_id=job.id)
 
 
-def save_silent_scene_structure(request, job, editor_project, selected_music):
+def save_silent_scene_structure(request, job, editor_project, selected_music, selected_voice):
     """Save add/remove/reorder operations for a project with no narration."""
     errors = []
     try:
@@ -190,6 +229,7 @@ def save_silent_scene_structure(request, job, editor_project, selected_music):
         suffix = token
         prompt = request.POST.get(f"prompt_{suffix}", "").strip()
         upload = request.FILES.get(f"media_{suffix}")
+        video_start, video_end = parse_scene_video_range(request, suffix, position, errors)
         try:
             hold = float(request.POST.get(f"hold_after_seconds_{suffix}", "0") or 0)
         except ValueError:
@@ -206,8 +246,11 @@ def save_silent_scene_structure(request, job, editor_project, selected_music):
                 errors.append(f"{upload.name} exceeds the 500 MB upload limit.")
         submitted.append({
             "token": token, "source": source, "prompt": prompt, "upload": upload,
-            "hold": round(max(0, hold), 3),
+            "hold": round(max(0, hold), 2),
             "use_original_audio": request.POST.get(f"use_original_audio_{suffix}") == "on",
+            "fit_with_borders": request.POST.get(f"fit_with_borders_{suffix}") == "on",
+            "video_start_seconds": video_start,
+            "video_end_seconds": video_end,
         })
     if errors:
         return errors, None
@@ -248,7 +291,10 @@ def save_silent_scene_structure(request, job, editor_project, selected_music):
                 "prompt": item["prompt"],
                 "narration": "",
                 "use_original_audio": bool(item["use_original_audio"] and is_video),
+                "fit_with_borders": bool(item["fit_with_borders"] and staged_path and is_media_16_9(staged_path)),
                 "hold_after_seconds": item["hold"],
+                "video_start_seconds": item["video_start_seconds"] if is_video else 0.0,
+                "video_end_seconds": item["video_end_seconds"] if is_video else None,
             })
             media_names.append(staged_path.name if staged_path else None)
 
@@ -272,13 +318,22 @@ def save_silent_scene_structure(request, job, editor_project, selected_music):
         json.dumps(prompts, ensure_ascii=False, indent=2), encoding="utf-8"
     )
     editor_project["paths"]["captions"].write_text("[]", encoding="utf-8")
-    snapshot = {"prompts": prompts, "captions": [], "media": media_names, "scene_order": order}
+    snapshot = {
+        "prompts": prompts,
+        "captions": [],
+        "media": media_names,
+        "scene_order": order,
+        "voice_key": selected_voice,
+    }
     VideoEditRevision.objects.create(job=job, number=new_revision, snapshot=snapshot)
     job.current_revision = new_revision
     job.render_required = True
     job.music_track = selected_music
+    job.voice_key = selected_voice
     job.render_start_script = "generate_images_runaware.py" if needs_image_generation else "create_video.py"
-    job.save(update_fields=["current_revision", "render_required", "render_start_script", "music_track"])
+    job.save(update_fields=[
+        "current_revision", "render_required", "render_start_script", "music_track", "voice_key"
+    ])
     return [], new_revision
 
 def edit_job(request, job_id):
@@ -289,29 +344,42 @@ def edit_job(request, job_id):
     try:
         editor_project = load_editor_project(settings.BASE_DIR, job.file_name)
     except (FileNotFoundError, json.JSONDecodeError) as exc:
-        return render(request, "pipeline/edit.html", {"job": job, "load_error": str(exc), "scenes": []}, status=422)
+        return render(request, "pipeline/edit.html", {
+            "job": job,
+            "load_error": str(exc),
+            "scenes": [],
+            "voice_choices": VOICE_CHOICES,
+            "selected_voice": job.voice_key,
+        }, status=422)
 
     errors = []
     if request.method == "POST":
         scene_word_lists = []
         selected_music = request.POST.get("music_track", job.music_track).strip()
+        selected_voice = request.POST.get("voice_key", job.voice_key).strip()
         valid_music_ids = {track["id"] for track in available_music_tracks()}
         if selected_music not in valid_music_ids:
             errors.append("Choose one of the available background tracks.")
+        if selected_voice not in VOICES:
+            errors.append("Choose one of the available voiceover voices.")
         narration_free = all(not scene["narration"].strip() for scene in editor_project["scenes"])
         if narration_free and request.POST.get("scene_order"):
             if errors:
                 return render(request, "pipeline/edit.html", {
                     "job": job, "scenes": editor_project["scenes"], "errors": errors,
                     "saved": False, "music_tracks": available_music_tracks(), "narration_free": True,
+                    "voice_choices": VOICE_CHOICES, "selected_voice": selected_voice,
                 })
-            structure_errors, revision = save_silent_scene_structure(request, job, editor_project, selected_music)
+            structure_errors, revision = save_silent_scene_structure(
+                request, job, editor_project, selected_music, selected_voice
+            )
             if not structure_errors:
                 return redirect(f"{request.path}?saved=1")
             errors.extend(structure_errors)
             return render(request, "pipeline/edit.html", {
                 "job": job, "scenes": editor_project["scenes"], "errors": errors,
                 "saved": False, "music_tracks": available_music_tracks(), "narration_free": True,
+                "voice_choices": VOICE_CHOICES, "selected_voice": selected_voice,
             })
         for scene in editor_project["scenes"]:
             index = scene["index"]
@@ -319,6 +387,7 @@ def edit_job(request, job_id):
             subtitle_text = request.POST.get(f"subtitle_{index}", "").strip()
             words = subtitle_text.split()
             upload = request.FILES.get(f"media_{index}")
+            video_start, video_end = parse_scene_video_range(request, index, index + 1, errors)
             try:
                 hold_after_seconds = float(request.POST.get(f"hold_after_seconds_{index}", "0") or 0)
             except ValueError:
@@ -326,6 +395,7 @@ def edit_job(request, job_id):
             if not 0 <= hold_after_seconds <= 300:
                 errors.append(f"Scene {index + 1} time after scene must be between 0 and 300 seconds.")
             use_original_audio = request.POST.get(f"use_original_audio_{index}") == "on"
+            fit_with_borders = request.POST.get(f"fit_with_borders_{index}") == "on"
             if not prompt and not upload and not scene["media_path"]:
                 errors.append(f"Scene {index + 1} needs a visual description or uploaded media.")
             if words and len(words) != scene["subtitle_word_count"]:
@@ -336,8 +406,11 @@ def edit_job(request, job_id):
             scene["prompt"] = prompt
             scene["prompt_changed"] = prompt != editor_project["prompts"][index].get("prompt", "")
             scene["subtitle_text"] = subtitle_text
-            scene["hold_after_seconds"] = round(hold_after_seconds, 3) if hold_after_seconds >= 0 else 0
+            scene["hold_after_seconds"] = round(hold_after_seconds, 2) if hold_after_seconds >= 0 else 0
             scene["use_original_audio"] = use_original_audio
+            scene["fit_with_borders"] = fit_with_borders
+            scene["video_start_seconds"] = video_start
+            scene["video_end_seconds"] = video_end
             scene_word_lists.append(words)
             if upload:
                 extension = Path(upload.name).suffix.lower()
@@ -347,6 +420,7 @@ def edit_job(request, job_id):
                     errors.append(f"{upload.name} exceeds the 500 MB upload limit.")
 
         if not errors:
+            voice_changed = selected_voice != job.voice_key
             new_revision = job.current_revision + 1
             history_dir = editor_project["paths"]["media"] / "history" / f"revision_{new_revision:03d}"
             history_dir.mkdir(parents=True, exist_ok=True)
@@ -356,6 +430,7 @@ def edit_job(request, job_id):
                 editor_project["prompts"][index]["prompt"] = scene["prompt"]
                 editor_project["prompts"][index]["narration"] = scene["narration"]
                 editor_project["prompts"][index]["hold_after_seconds"] = scene["hold_after_seconds"]
+                editor_project["prompts"][index]["fit_with_borders"] = scene["fit_with_borders"]
                 upload = request.FILES.get(f"media_{index}")
                 old_path = scene["media_path"]
                 if scene["prompt_changed"] and scene["prompt"] and not upload:
@@ -391,6 +466,15 @@ def edit_job(request, job_id):
                 editor_project["prompts"][index]["use_original_audio"] = bool(
                     scene["use_original_audio"] and is_video
                 )
+                editor_project["prompts"][index]["fit_with_borders"] = bool(
+                    scene["fit_with_borders"] and active_path and is_media_16_9(active_path)
+                )
+                editor_project["prompts"][index]["video_start_seconds"] = (
+                    scene["video_start_seconds"] if is_video else 0.0
+                )
+                editor_project["prompts"][index]["video_end_seconds"] = (
+                    scene["video_end_seconds"] if is_video else None
+                )
             captions = update_caption_words(editor_project["captions"], editor_project["caption_ranges"], scene_word_lists)
             editor_project["paths"]["prompts"].write_text(
                 json.dumps(editor_project["prompts"], ensure_ascii=False, indent=2), encoding="utf-8"
@@ -405,18 +489,35 @@ def edit_job(request, job_id):
                 "scene_settings": [
                     {
                         "use_original_audio": prompt.get("use_original_audio", False),
+                        "fit_with_borders": prompt.get("fit_with_borders", False),
                         "hold_after_seconds": prompt.get("hold_after_seconds", 0),
+                        "video_start_seconds": prompt.get("video_start_seconds", 0),
+                        "video_end_seconds": prompt.get("video_end_seconds"),
                     }
                     for prompt in editor_project["prompts"]
                 ],
+                "voice_key": selected_voice,
             }
             VideoEditRevision.objects.create(job=job, number=new_revision, snapshot=snapshot)
             job.current_revision = new_revision
             job.render_required = True
             job.music_track = selected_music
-            if needs_image_generation:
+            job.voice_key = selected_voice
+            if voice_changed:
+                voiceover_dir = settings.BASE_DIR / "assets" / "voiceovers"
+                for stale_path in (
+                    voiceover_dir / f"{job.file_name}.mp3",
+                    voiceover_dir / f"captions_{job.file_name}.json",
+                ):
+                    stale_path.unlink(missing_ok=True)
+                job.render_start_script = "generate_voiceover_with_timing.py"
+            elif needs_image_generation:
                 job.render_start_script = "generate_images_runaware.py"
-            job.save(update_fields=["current_revision", "render_required", "render_start_script", "music_track"])
+            else:
+                job.render_start_script = "create_video.py"
+            job.save(update_fields=[
+                "current_revision", "render_required", "render_start_script", "music_track", "voice_key"
+            ])
             return redirect(f"{request.path}?saved=1")
 
     return render(request, "pipeline/edit.html", {
@@ -425,6 +526,8 @@ def edit_job(request, job_id):
         "errors": errors,
         "saved": request.GET.get("saved") == "1",
         "music_tracks": available_music_tracks(),
+        "voice_choices": VOICE_CHOICES,
+        "selected_voice": request.POST.get("voice_key", job.voice_key),
         "narration_free": all(not scene["narration"].strip() for scene in editor_project["scenes"]),
     })
 
@@ -482,6 +585,18 @@ def preview_music(request, track_id):
         raise Http404("Music track not found")
     response = FileResponse(music_path.open("rb"), content_type="audio/mpeg")
     response["Content-Disposition"] = f'inline; filename="{music_path.name}"'
+    return response
+
+
+def preview_voice(request, voice_key):
+    if voice_key not in VOICES:
+        raise Http404("Voice not found")
+    try:
+        sample_path = ensure_voice_sample(settings.BASE_DIR, voice_key)
+    except (OSError, RuntimeError, ValueError, requests.RequestException) as exc:
+        return JsonResponse({"error": f"Voice sample could not be generated: {exc}"}, status=502)
+    response = FileResponse(sample_path.open("rb"), content_type="audio/mpeg")
+    response["Content-Disposition"] = f'inline; filename="{sample_path.name}"'
     return response
 
 

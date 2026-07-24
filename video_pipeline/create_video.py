@@ -326,7 +326,13 @@ class VideoGenerator:
                 "raw_end": raw_end,
                 "captions": adjusted,
                 "use_original_audio": bool(setting.get("use_original_audio", False)),
+                "fit_with_borders": bool(setting.get("fit_with_borders", False)),
                 "hold_after_seconds": hold,
+                "video_start_seconds": max(0.0, float(setting.get("video_start_seconds", 0) or 0)),
+                "video_end_seconds": (
+                    float(setting["video_end_seconds"])
+                    if setting.get("video_end_seconds") not in (None, "") else None
+                ),
             })
             output_cursor += visual_duration
 
@@ -344,7 +350,16 @@ class VideoGenerator:
         parts = []
         for scene in timeline:
             if raw_audio is not None and scene["raw_start"] is not None:
-                parts.append(raw_audio.subclip(scene["raw_start"], min(scene["raw_end"], raw_audio.duration)))
+                # Caption preparation intentionally offsets the first cue by 50 ms.
+                # MoviePy interprets a negative subclip start relative to the end of
+                # the source, which can silently remove the narration. Preserve that
+                # lead-in as silence and only address the MP3 with non-negative times.
+                if scene["raw_start"] < 0:
+                    parts.append(self._silence(-scene["raw_start"]))
+                audio_start = max(0.0, scene["raw_start"])
+                audio_end = min(scene["raw_end"], raw_audio.duration)
+                if audio_end > audio_start:
+                    parts.append(raw_audio.subclip(audio_start, audio_end))
             hold = scene["hold_after_seconds"]
             if hold > 0:
                 parts.append(self._silence(hold))
@@ -367,11 +382,15 @@ class VideoGenerator:
             return frame * (ducked if any(start <= t < end for start, end in intervals) else normal)
         return music.fl(apply_gain, keep_duration=True)
     # ----------------------------- media loading / motion -----------------------------
-    def _load_media_clip(self, media_path, duration):
+    def _load_media_clip(self, media_path, duration, video_start_seconds=0.0, video_end_seconds=None):
         is_video = self.is_video_file(media_path)
         if is_video:
             try:
                 clip = VideoFileClip(media_path)
+                trim_start = min(max(0.0, float(video_start_seconds or 0)), max(0.0, clip.duration - 0.01))
+                trim_end = clip.duration if video_end_seconds is None else min(float(video_end_seconds), clip.duration)
+                if (trim_start > 0 or video_end_seconds is not None) and trim_end > trim_start:
+                    clip = clip.subclip(trim_start, trim_end)
                 if clip.duration < duration:
                     clip = clip.fx(vfx.loop, duration=duration)
                 else:
@@ -424,15 +443,28 @@ class VideoGenerator:
             )
         return self._cached_encoding_settings
 
-    def _normalize_video_media(self, media_path, duration):
+    def _normalize_video_media(
+        self, media_path, duration, fit_with_borders=False,
+        video_start_seconds=0.0, video_end_seconds=None,
+    ):
         """Cache a short portrait H.264 working copy for efficient MoviePy decoding."""
         source = Path(media_path)
         cache_dir = source.parent / ".render_cache"
         cache_dir.mkdir(exist_ok=True)
         width = int(math.ceil(self.VIDEO_WIDTH * self.WORKING_OVERSCAN / 2) * 2)
         height = int(math.ceil(self.VIDEO_HEIGHT * self.WORKING_OVERSCAN / 2) * 2)
-        duration_ms = max(1, int(math.ceil(duration * 1000)))
-        cache_name = f"{source.stem}_{source.stat().st_mtime_ns}_{duration_ms}_{width}x{height}.mp4"
+        trim_start = max(0.0, float(video_start_seconds or 0))
+        trim_end = float(video_end_seconds) if video_end_seconds is not None else None
+        selected_duration = max(0.01, trim_end - trim_start) if trim_end is not None else duration
+        working_duration = min(duration, selected_duration)
+        duration_ms = max(1, int(math.ceil(working_duration * 1000)))
+        start_ms = max(0, int(round(trim_start * 1000)))
+        end_ms = "full" if trim_end is None else max(start_ms + 1, int(round(trim_end * 1000)))
+        mode = "fit" if fit_with_borders else "cover"
+        cache_name = (
+            f"{source.stem}_{source.stat().st_mtime_ns}_{start_ms}-{end_ms}_"
+            f"{duration_ms}_{width}x{height}_{mode}.mp4"
+        )
         destination = cache_dir / cache_name
         if destination.exists() and destination.stat().st_size > 0:
             return str(destination)
@@ -440,10 +472,16 @@ class VideoGenerator:
         temporary = destination.with_suffix(".tmp.mp4")
         codec, preset = self._encoding_settings()
         ffmpeg_binary = get_setting("FFMPEG_BINARY")
+        video_filter = (
+            f"scale={self.VIDEO_WIDTH}:{self.VIDEO_HEIGHT}:force_original_aspect_ratio=decrease,"
+            f"pad={self.VIDEO_WIDTH}:{self.VIDEO_HEIGHT}:(ow-iw)/2:(oh-ih)/2:black"
+            if fit_with_borders else
+            f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}"
+        )
         command = [
-            ffmpeg_binary, "-y", "-v", "error", "-i", str(source),
-            "-t", f"{duration:.3f}",
-            "-vf", f"scale={width}:{height}:force_original_aspect_ratio=increase,crop={width}:{height}",
+            ffmpeg_binary, "-y", "-v", "error", "-ss", f"{trim_start:.3f}", "-i", str(source),
+            "-t", f"{working_duration:.3f}",
+            "-vf", video_filter,
             "-map", "0:v:0", "-map", "0:a?", "-c:v", codec,
             "-preset", preset, "-b:v", "8M", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", str(temporary),
@@ -487,11 +525,15 @@ class VideoGenerator:
         }
         return aliases.get(animation, animation)
 
-    def _motion_clip(self, clip, animation, duration, extra_scale=None):
+    def _motion_clip(self, clip, animation, duration, extra_scale=None, fit_with_borders=False):
         """Crop early and apply cover sizing plus motion in one resize operation."""
         animation = self._normalize_animation_name(animation)
-        clip = self._crop_to_working_aspect(clip)
         W, H = self.VIDEO_WIDTH, self.VIDEO_HEIGHT
+        if fit_with_borders:
+            contain_scale = min(W / max(1, clip.w), H / max(1, clip.h))
+            fitted = clip.resize(contain_scale).set_position("center")
+            return fitted.on_color(size=(W, H), color=(0, 0, 0), pos=("center", "center"))
+        clip = self._crop_to_working_aspect(clip)
         base_w, base_h = clip.w, clip.h
         if extra_scale is None:
             extra_scale = self.MEDIA_EXTRA_SCALE
@@ -544,17 +586,29 @@ class VideoGenerator:
             )
 
         return clip.resize(scale_at).set_position(position_at)
-    def create_media_effect(self, media_path, start_time, end_time, animation, clip_index=0, use_original_audio=False):
+    def create_media_effect(
+        self, media_path, start_time, end_time, animation, clip_index=0,
+        use_original_audio=False, fit_with_borders=False,
+        video_start_seconds=0.0, video_end_seconds=None,
+    ):
         """Create a media clip with professional Shorts motion."""
         raw_duration = max(0.01, end_time - start_time)
         overlap = min(self.MEDIA_CROSSFADE, raw_duration * 0.25)
         actual_start = max(0.0, start_time - (overlap if clip_index > 0 else 0.0))
         duration = max(0.01, end_time - actual_start)
 
-        render_media_path = self._normalize_video_media(media_path, duration) if self.is_video_file(media_path) else media_path
-        media_clip, is_video, source_audio = self._load_media_clip(render_media_path, duration)
+        render_media_path = self._normalize_video_media(
+            media_path, duration, fit_with_borders, video_start_seconds, video_end_seconds
+        ) if self.is_video_file(media_path) else media_path
+        normalized = Path(render_media_path).resolve() != Path(media_path).resolve()
+        media_clip, is_video, source_audio = self._load_media_clip(
+            render_media_path,
+            duration,
+            0.0 if normalized else video_start_seconds,
+            None if normalized else video_end_seconds,
+        )
         cover_extra = self.WORKING_OVERSCAN if is_video else self.MEDIA_EXTRA_SCALE
-        media_clip = self._motion_clip(media_clip, animation, duration, extra_scale=cover_extra)
+        media_clip = self._motion_clip(media_clip, animation, duration, extra_scale=cover_extra, fit_with_borders=fit_with_borders)
         media_clip = media_clip.set_start(actual_start).set_duration(duration).set_end(end_time)
 
         if clip_index == 0:
@@ -564,7 +618,9 @@ class VideoGenerator:
 
         original_audio = None
         if use_original_audio and is_video and source_audio is not None:
-            original_audio = source_audio.subclip(0, min(raw_duration, source_audio.duration))
+            source_offset = max(0.0, start_time - actual_start)
+            source_end = min(source_offset + raw_duration, source_audio.duration)
+            original_audio = source_audio.subclip(source_offset, source_end)
             if original_audio.duration < raw_duration:
                 original_audio = original_audio.fx(audio_loop, duration=raw_duration)
             original_audio = original_audio.volumex(self.ORIGINAL_AUDIO_VOLUME).set_start(start_time).set_duration(raw_duration)
@@ -674,6 +730,9 @@ class VideoGenerator:
                 animation,
                 clip_index=index,
                 use_original_audio=scene["use_original_audio"],
+                fit_with_borders=scene["fit_with_borders"],
+                video_start_seconds=scene["video_start_seconds"],
+                video_end_seconds=scene["video_end_seconds"],
             )
             clips.append(media_clip)
             if original_audio is not None:

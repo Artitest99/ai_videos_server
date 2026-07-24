@@ -1,5 +1,8 @@
 import json
 import re
+import json as json_module
+import subprocess
+from PIL import Image
 from pathlib import Path
 
 
@@ -10,6 +13,28 @@ def numeric_media_sort(path: Path):
     digits = "".join(filter(str.isdigit, path.stem))
     return (int(digits or 0), path.name.lower())
 
+
+def is_media_16_9(path: Path, tolerance=0.03):
+    """Return whether image/video dimensions are approximately 16:9."""
+    if not path or not path.exists():
+        return False
+    width = height = 0
+    try:
+        if path.suffix.lower() in {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"}:
+            with Image.open(path) as image:
+                width, height = image.size
+        else:
+            result = subprocess.run(
+                ["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries",
+                 "stream=width,height", "-of", "json", str(path)],
+                capture_output=True, text=True, timeout=15,
+            )
+            if result.returncode == 0:
+                stream = json_module.loads(result.stdout).get("streams", [{}])[0]
+                width, height = int(stream.get("width", 0)), int(stream.get("height", 0))
+    except (OSError, ValueError, KeyError, IndexError, subprocess.SubprocessError, json_module.JSONDecodeError):
+        return False
+    return height > 0 and abs((width / height) - (16 / 9)) <= tolerance
 
 def project_paths(base_dir: Path, file_name: str):
     return {
@@ -66,7 +91,14 @@ def load_editor_project(base_dir: Path, file_name: str):
             "narration": narrations[index] if index < len(narrations) else "",
             "prompt": prompt_entry.get("prompt", ""),
             "use_original_audio": bool(prompt_entry.get("use_original_audio", False)),
-            "hold_after_seconds": float(prompt_entry.get("hold_after_seconds", 0) or 0),
+            "hold_after_seconds": round(float(prompt_entry.get("hold_after_seconds", 0) or 0), 2),
+            "video_start_seconds": round(float(prompt_entry.get("video_start_seconds", 0) or 0), 2),
+            "video_end_seconds": (
+                round(float(prompt_entry["video_end_seconds"]), 2)
+                if prompt_entry.get("video_end_seconds") not in (None, "") else None
+            ),
+            "fit_with_borders": bool(prompt_entry.get("fit_with_borders", False)),
+            "is_16_9": is_media_16_9(media_path) if media_path else False,
             "is_video": bool(media_path and media_path.suffix.lower() in {".mp4", ".mov", ".avi", ".mkv", ".webm"}),
             "subtitle_text": " ".join(words),
             "subtitle_word_count": len(words),

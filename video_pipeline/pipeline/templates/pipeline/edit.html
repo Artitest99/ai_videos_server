@@ -46,13 +46,13 @@
         <div>
             <a class="back" href="{% url 'job_status' job.id %}">← Back to video</a>
             <h1>Edit {{ job.file_name }}</h1>
-            <div class="muted">Revision {{ job.current_revision }} · The current voiceover and timing stay unchanged.</div>
+            <div class="muted">Revision {{ job.current_revision }} · You can change the voiceover voice and rebuild its timing.</div>
         </div>
         {% if job.render_required %}
         <form method="post" action="{% url 'render_edits' job.id %}">
             {% csrf_token %}
             <button class="btn primary" type="submit">
-                {% if job.render_start_script == 'generate_images_runaware.py' %}Generate new images and render{% else %}Render updated video{% endif %}
+                {% if job.render_start_script == 'generate_voiceover_with_timing.py' %}Generate new voiceover and render{% elif job.render_start_script == 'generate_images_runaware.py' %}Generate new images and render{% else %}Render updated video{% endif %}
             </button>
         </form>
         {% endif %}
@@ -61,6 +61,9 @@
     {% if saved %}<div class="notice">Your edits were saved. Render the updated video when you are ready.</div>{% endif %}
     {% if job.render_required and job.render_start_script == 'generate_images_runaware.py' %}
     <div class="notice">A visual description changed. The next render will generate a new AI image for that scene before rebuilding the video.</div>
+    {% endif %}
+    {% if job.render_required and job.render_start_script == 'generate_voiceover_with_timing.py' %}
+    <div class="notice">The voice changed. The next render will generate a new voiceover and fresh subtitle timing before rebuilding the video.</div>
     {% endif %}
     {% if load_error %}<div class="errors">This older project cannot be edited yet: {{ load_error }}</div>{% endif %}
     {% if errors %}<div class="errors"><strong>Please review these items:</strong><ul>{% for error in errors %}<li>{{ error }}</li>{% endfor %}</ul></div>{% endif %}
@@ -88,6 +91,23 @@
         </div>
     </section>
 
+    {% if not narration_free %}
+    <section class="scene" style="margin-bottom:18px">
+        <div class="scene-title">Voiceover voice</div>
+        <div style="padding:20px">
+            <label for="voice_key">Choose a voice</label>
+            <select id="voice_key" name="voice_key" form="edit-form" required>
+                {% for key, label in voice_choices %}
+                <option value="{{ key }}" data-preview="{% url 'preview_voice' key %}" {% if selected_voice == key %}selected{% endif %}>{{ label }}</option>
+                {% endfor %}
+            </select>
+            <p class="hint">Changing the voice regenerates the narration and its subtitle timing during the next render.</p>
+            <audio id="voice-preview" controls preload="none" style="width:100%;margin-top:10px"></audio>
+            <p id="voice-preview-status" class="hint">Press play to hear: “Hi, This is my voice. Do you find it fitting?” The first play may take a few seconds while the sample is generated.</p>
+        </div>
+    </section>
+    {% endif %}
+
     {% if scenes %}
     <form method="post" enctype="multipart/form-data" id="edit-form">
         {% csrf_token %}
@@ -100,7 +120,7 @@
                     <div>
                         <div class="preview">
                             {% if scene.media_name %}
-                                {% if scene.media_name|lower|slice:"-4:" == ".mp4" or scene.media_name|lower|slice:"-4:" == ".mov" %}
+                                {% if scene.is_video %}
                                 <video controls preload="metadata" src="{% url 'scene_media' job.id scene.index %}"></video>
                                 {% else %}
                                 <img src="{% url 'scene_media' job.id scene.index %}" alt="Scene {{ scene.number }} media">
@@ -112,8 +132,20 @@
                         <p class="hint">A replacement video can use its own sound.</p>
                         <label style="margin-top:12px"><input class="use-original-audio" id="use_original_audio_{{ scene.index }}" name="use_original_audio_{{ scene.index }}" type="checkbox" {% if scene.use_original_audio %}checked{% endif %} {% if not scene.is_video %}disabled{% endif %}> Use original video sound</label>
                         <p class="hint">Background music is lowered while original sound plays.</p>
+                        <div class="video-range-row" {% if not scene.is_video %}hidden{% endif %} style="margin-top:12px;padding:12px;background:var(--soft);border-radius:10px">
+                            <label>Choose the part of the video to use</label>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                                <div><label for="video_start_seconds_{{ scene.index }}">Start (seconds)</label><input class="video-start-seconds" id="video_start_seconds_{{ scene.index }}" name="video_start_seconds_{{ scene.index }}" type="number" min="0" max="86400" step="0.01" value="{{ scene.video_start_seconds|floatformat:2 }}"></div>
+                                <div><label for="video_end_seconds_{{ scene.index }}">End (seconds)</label><input class="video-end-seconds" id="video_end_seconds_{{ scene.index }}" name="video_end_seconds_{{ scene.index }}" type="number" min="0.01" max="86400" step="0.01" value="{% if scene.video_end_seconds != None %}{{ scene.video_end_seconds|floatformat:2 }}{% endif %}"></div>
+                            </div>
+                            <p class="video-range-status hint">Play the preview above to watch only this range.</p>
+                        </div>
+                        <div class="fit-with-borders-row" {% if not scene.is_16_9 %}hidden{% endif %}>
+                            <label style="margin-top:12px"><input class="fit-with-borders" id="fit_with_borders_{{ scene.index }}" name="fit_with_borders_{{ scene.index }}" type="checkbox" {% if scene.fit_with_borders %}checked{% endif %} {% if not scene.is_16_9 %}disabled{% endif %}> Fit entire 16:9 media with black borders</label>
+                            <p class="hint">Shows the complete image or video without stretching or cropping it.</p>
+                        </div>
                         <label style="margin-top:12px" for="hold_after_seconds_{{ scene.index }}">Time after scene (seconds)</label>
-                        <input id="hold_after_seconds_{{ scene.index }}" name="hold_after_seconds_{{ scene.index }}" type="number" min="0" max="300" step="0.1" value="{{ scene.hold_after_seconds }}">
+                        <input id="hold_after_seconds_{{ scene.index }}" name="hold_after_seconds_{{ scene.index }}" type="number" min="0" max="300" step="0.01" value="{{ scene.hold_after_seconds|floatformat:2 }}">
                         <p class="hint">This scene continues without narration before the next scene.</p>
                     </div>
                     <div class="fields">
@@ -154,17 +186,102 @@
     function attachScene(card) {
         const input = card.querySelector('input[type="file"][name^="media_"]');
         const checkbox = card.querySelector('.use-original-audio');
+        const fitCheckbox = card.querySelector('.fit-with-borders');
+        const fitRow = card.querySelector('.fit-with-borders-row');
+        const holdInput = card.querySelector('input[name^="hold_after_seconds_"]');
+        const rangeRow = card.querySelector('.video-range-row');
+        const rangeStatus = card.querySelector('.video-range-status');
+        const startInput = card.querySelector('.video-start-seconds');
+        const endInput = card.querySelector('.video-end-seconds');
+        let previewVideo = card.querySelector('.preview video');
+
+        function selectedRange() {
+            return {start: Number(startInput.value), end: Number(endInput.value)};
+        }
+
+        function updateRangePreview(updateSceneDuration = true) {
+            const {start, end} = selectedRange();
+            const sourceDuration = previewVideo ? previewVideo.duration : NaN;
+            const valid = Number.isFinite(start) && Number.isFinite(end) && start >= 0 && end > start && (!Number.isFinite(sourceDuration) || end <= sourceDuration + 0.01);
+            if (!valid) {
+                rangeStatus.textContent = 'End must be after start and within the source video.';
+                return;
+            }
+            rangeStatus.textContent = `Previewing ${start.toFixed(2)}s to ${end.toFixed(2)}s (${(end - start).toFixed(2)} seconds).`;
+            if (updateSceneDuration) holdInput.value = (end - start).toFixed(2);
+            if (previewVideo && previewVideo.readyState >= 1) previewVideo.currentTime = start;
+        }
+
+        function configureVideoPreview(video, resetRange) {
+            previewVideo = video;
+            rangeRow.hidden = false;
+            const initialize = () => {
+                const fullDuration = Math.floor(video.duration * 100) / 100;
+                startInput.max = fullDuration.toFixed(2);
+                endInput.max = fullDuration.toFixed(2);
+                if (resetRange) {
+                    startInput.value = '0.00';
+                    endInput.value = fullDuration.toFixed(2);
+                } else if (endInput.value === '' || Number(endInput.value) > fullDuration) {
+                    endInput.value = fullDuration.toFixed(2);
+                }
+                updateRangePreview(resetRange);
+            };
+            video.addEventListener('loadedmetadata', initialize, {once: true});
+            video.addEventListener('play', () => {
+                const {start, end} = selectedRange();
+                if (video.currentTime < start || video.currentTime >= end) video.currentTime = start;
+            });
+            video.addEventListener('timeupdate', () => {
+                const {start, end} = selectedRange();
+                if (Number.isFinite(start) && Number.isFinite(end) && end > start && video.currentTime >= end - 0.02) {
+                    video.currentTime = start;
+                }
+            });
+            if (video.readyState >= 1) initialize();
+        }
+        startInput.addEventListener('input', () => updateRangePreview(true));
+        endInput.addEventListener('input', () => updateRangePreview(true));
+        function setAspectOption(width, height) {
+            const is16by9 = height > 0 && Math.abs((width / height) - (16 / 9)) <= 0.03;
+            fitRow.hidden = !is16by9;
+            fitCheckbox.disabled = !is16by9;
+            if (!is16by9) fitCheckbox.checked = false;
+        }
         input.addEventListener('change', () => {
             const file = input.files[0];
             if (!file) return;
+            const isVideo = file.type.startsWith('video/') || /\.(mp4|mov|avi|mkv|webm)$/i.test(file.name);
             const preview = card.querySelector('.preview');
             const url = URL.createObjectURL(file);
-            preview.innerHTML = file.type.startsWith('video/')
-                ? `<video controls preload="metadata" src="${url}"></video>`
-                : `<img src="${url}" alt="Selected scene preview">`;
-            checkbox.disabled = !file.type.startsWith('video/');
+            checkbox.disabled = !isVideo;
             if (checkbox.disabled) checkbox.checked = false;
+            fitRow.hidden = true;
+            fitCheckbox.disabled = true;
+            fitCheckbox.checked = false;
+            if (isVideo) {
+                const video = document.createElement('video');
+                video.controls = true;
+                video.preload = 'metadata';
+                video.onloadedmetadata = () => {
+                    setAspectOption(video.videoWidth, video.videoHeight);
+                };
+                video.src = url;
+                preview.replaceChildren(video);
+                configureVideoPreview(video, true);
+            } else {
+                rangeRow.hidden = true;
+                startInput.value = '0.00';
+                endInput.value = '';
+                previewVideo = null;
+                const image = new Image();
+                image.alt = 'Selected scene preview';
+                image.onload = () => setAspectOption(image.naturalWidth, image.naturalHeight);
+                image.src = url;
+                preview.replaceChildren(image);
+            }
         });
+        if (previewVideo) configureVideoPreview(previewVideo, false);
         if (!narrationFree) return;
         card.querySelector('.move-up').addEventListener('click', () => {
             if (card.previousElementSibling) sceneList.insertBefore(card, card.previousElementSibling);
@@ -206,8 +323,17 @@
                         <label style="margin-top:12px">Image or video</label>
                         <input name="media_${token}" type="file" accept="image/*,video/*">
                         <label style="margin-top:12px"><input class="use-original-audio" name="use_original_audio_${token}" type="checkbox" disabled> Use original video sound</label>
+                        <div class="video-range-row" hidden style="margin-top:12px;padding:12px;background:var(--soft);border-radius:10px">
+                            <label>Choose the part of the video to use</label>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                                <div><label>Start (seconds)</label><input class="video-start-seconds" name="video_start_seconds_${token}" type="number" min="0" max="86400" step="0.01" value="0.00"></div>
+                                <div><label>End (seconds)</label><input class="video-end-seconds" name="video_end_seconds_${token}" type="number" min="0.01" max="86400" step="0.01"></div>
+                            </div>
+                            <p class="video-range-status hint">Play the preview above to watch only this range.</p>
+                        </div>
+                        <div class="fit-with-borders-row" hidden><label style="margin-top:12px"><input class="fit-with-borders" name="fit_with_borders_${token}" type="checkbox" disabled> Fit entire 16:9 media with black borders</label></div>
                         <label style="margin-top:12px">Scene duration (seconds)</label>
-                        <input name="hold_after_seconds_${token}" type="number" min="0.1" max="300" step="0.1" value="5" required>
+                        <input name="hold_after_seconds_${token}" type="number" min="0.01" max="300" step="0.01" value="5.00" required>
                     </div>
                     <div class="fields">
                         <div><label>Spoken narration</label><div class="locked">No narration</div></div>
@@ -232,6 +358,25 @@
     }
     musicSelect.addEventListener('change', updateMusicPreview);
     updateMusicPreview();
+    const voiceSelect = document.getElementById('voice_key');
+    const voicePreview = document.getElementById('voice-preview');
+    const voicePreviewStatus = document.getElementById('voice-preview-status');
+    if (voiceSelect && voicePreview) {
+        function updateVoicePreview() {
+            const option = voiceSelect.options[voiceSelect.selectedIndex];
+            voicePreview.pause();
+            voicePreview.src = option ? option.dataset.preview : '';
+            voicePreviewStatus.textContent = 'Press play to hear: “Hi, This is my voice. Do you find it fitting?” The first play may take a few seconds while the sample is generated.';
+        }
+        voiceSelect.addEventListener('change', updateVoicePreview);
+        voicePreview.addEventListener('playing', () => {
+            voicePreviewStatus.textContent = `Playing the ${voiceSelect.options[voiceSelect.selectedIndex].text} sample.`;
+        });
+        voicePreview.addEventListener('error', () => {
+            voicePreviewStatus.textContent = 'This voice sample could not be loaded. Check the ElevenLabs API configuration and try again.';
+        });
+        updateVoicePreview();
+    }
     document.getElementById('upload-music').addEventListener('click', async () => {
         const nameInput = document.getElementById('new-music-name');
         const fileInput = document.getElementById('new-music-file');

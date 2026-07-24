@@ -23,7 +23,7 @@ Browser form
   -> completed video becomes downloadable
 ```
 
-The scripts communicate primarily through files and the shared `.env` file rather than through Python function arguments. `FILE_NAME` selects the current project's files, `MUSIC` selects a numbered background track, and `FPS` controls rendering frame rate.
+The scripts communicate primarily through files and the shared `.env` file rather than through Python function arguments. `FILE_NAME` selects the current project's files, `MUSIC` selects a numbered background track, `VOICE` selects an ElevenLabs voice key, and `FPS` controls rendering frame rate.
 
 ## 3. Project layout
 
@@ -37,6 +37,7 @@ The actual application root is `Y:\ai_videos_server\video_pipeline`.
 | `scripts/<name>.txt` | Narration text. `###` markers also define scene boundaries. |
 | `prompts/<name>.json` | Ordered image-generation prompt records. |
 | `assets/voiceovers/` | Generated narration MP3 and raw timing JSON. |
+| `assets/voice_samples/` | Lazily generated, reusable MP3 previews for the voice picker. |
 | `captions/` | Caption segments prepared for MoviePy. |
 | `assets/media/<name>/ai/` | AI-generated or selected source images. |
 | `assets/media/<name>/` | Final ordered media used by the renderer, including user uploads. |
@@ -44,7 +45,7 @@ The actual application root is `Y:\ai_videos_server\video_pipeline`.
 | `assets/fonts/` | Fonts used to rasterize captions. |
 | `output/<name>.mp4` | Final rendered video. |
 | `db.sqlite3` | Django job/status database. |
-| `.env` | Shared current-job configuration (`FILE_NAME`, `MUSIC`, `FPS`). |
+| `.env` | Shared current-job configuration (`FILE_NAME`, `MUSIC`, `VOICE`, `FPS`). |
 
 Python dependencies are pinned in `requirements.txt`. The deployed virtual environment is located one level above the Django application at `Y:\ai_videos_server\.venv`.
 
@@ -61,6 +62,7 @@ The current configuration is development-oriented: `DEBUG` is enabled, `ALLOWED_
 `VideoJob` is the only application model. It stores:
 
 - `file_name`: project identifier and base filename.
+- `voice_key`: selected key from `voice_config.VOICES`; existing jobs default to `Rachel_other`.
 - `status`: `pending`, `running`, `completed`, or `failed`.
 - `current_script`: pipeline step currently running.
 - `progress`: integer percentage.
@@ -111,11 +113,13 @@ This is a process pipeline, not a Django/Celery task queue. Work exists only in 
 
 ### `config.py`
 
-This module manually parses `.env` from the current working directory and exports `FILE_NAME`, `MUSIC`, and `FPS`. Importing it prints `FILE_NAME`. Paths throughout the project are relative, so commands must be launched from `Y:\ai_videos_server\video_pipeline`.
+This module reads `.env` from the application directory and exports `FILE_NAME`, `MUSIC`, `VOICE`, and `FPS`. Paths are anchored to the application directory so pipeline subprocesses use the same project configuration.
 
 ### `generate_voiceover_with_timing.py`
 
-This script reads `scripts/<FILE_NAME>.txt`, removes Markdown-like `###`, `**`, and `*` markers, and sends the cleaned text to ElevenLabs text-to-speech using a selected voice. If the output MP3 already exists, the entire step exits early.
+This script reads `scripts/<FILE_NAME>.txt`, removes Markdown-like `###`, `**`, and `*` markers, resolves the selected `VOICE` key through `voice_config.py`, and sends the cleaned text to ElevenLabs text-to-speech. If both the output MP3 and timing JSON already exist, the entire step exits early. Changing a narrated project's voice in the editor deletes those stale artifacts before scheduling this step again.
+
+The creation and narrated-project edit screens also expose a preview for each configured voice. `pipeline/voice_samples.py` sends the constant sample sentence to the same ElevenLabs voice ID on first playback, writes the result atomically to `assets/voice_samples/<voice_key>.mp3`, and serves that cached file for later playback.
 
 After generating audio, it waits three seconds, requests the latest ElevenLabs history item, attempts to locate character-level alignment data, and groups characters into word records:
 
@@ -124,6 +128,8 @@ After generating audio, it waits three seconds, requests the latest ElevenLabs h
 ```
 
 It writes these records to `assets/voiceovers/captions_<FILE_NAME>.json`. The script assumes the newest account history item is the audio it just created.
+
+Prepared captions may begin at `-0.05s` to provide a small visual timing offset. The renderer must not pass that negative value to `AudioFileClip.subclip()`, because MoviePy treats negative times relative to the end of the source. `build_narration_track()` represents the offset as stereo silence and begins MP3 extraction at `0.0s`.
 
 ### `prepare_captions.py`
 
@@ -164,6 +170,7 @@ Current behavior:
 - Uses a single cover-and-motion resize stage and a fixed static-scene fast path.
 - Crops overly wide media before resizing, avoiding work on pixels that will never enter the portrait frame.
 - Creates reusable, duration-limited portrait H.264 files under `assets/media/<project>/.render_cache/` for uploaded videos. The first render prepares the cache; later renders reuse it.
+- Trims each uploaded video to `video_start_seconds` / `video_end_seconds` before scaling and caching. The range is included in the cache key, and the selected video/audio segment loops only when the scene timeline is longer.
 - Probes MoviePy's FFmpeg binary for AMD `h264_amf`; when available it encodes with the `speed` preset. Other machines use `libx264` with `veryfast` and up to 12 CPU threads.
 - Does not apply the former full-resolution vignette overlay because its per-frame alpha composite materially slowed rendering.
 - Mixes narration/silence, ducked looping background music, and selected source-video audio into one duration-matched stereo track.
@@ -271,6 +278,7 @@ Completed-job editing now supports:
 - Optional on-screen subtitles. A blank subtitle field hides captions for that scene without changing narration or timing.
 - Per-scene original video sound and background-music ducking.
 - Per-scene post-scene duration with no narration or captions.
+- Per-video `video_start_seconds` / `video_end_seconds` source trimming with a range-limited live browser preview.
 - Immediate browser preview of newly selected image and video files through object URLs.
 - For projects with no narration only: add, remove, move up, move down, and reorder scenes. New scenes require a positive duration and either uploaded media or a visual prompt.
 - Safe numeric media renumbering when narration-free scenes are reordered, with previous active and generated media archived in revision history.
@@ -281,3 +289,8 @@ Narrated projects intentionally do not expose structural scene controls because 
 ## 14. Verification status
 
 Focused Django suites cover scene timing, stereo silence, original audio settings, optional subtitles, narration-free creation, editor revisions, scene add/reorder, upload previews, and narrated-project restrictions. The latest focused structural suite passed 15 tests, and the final narration-free validation suite passed 3 tests.
+## 15. Precise durations and 16:9 fit mode implemented July 24, 2026
+
+Scene duration controls accept and display hundredths of a second. On video selection, browser metadata supplies the complete source duration and JavaScript floors it to two decimal places before populating the field.
+
+When media dimensions are approximately 16:9, creation and editing screens expose `Fit entire 16:9 media with black borders`. The setting is persisted as `fit_with_borders`. Images are contained and centered on the renderer's black 1080x1920 canvas. Videos use a separate fit-aware H.264 cache produced with contain scaling and black padding. This path bypasses the normal portrait crop and motion zoom so the entire source remains visible without geometric stretching.

@@ -20,9 +20,11 @@ def run_video_pipeline(job_id, fps='30', start_script=None):
         update_env_variable("FILE_NAME", job.file_name, env_path)
         update_env_variable("FPS", fps, env_path)
         update_env_variable("MUSIC", job.music_track, env_path)
+        update_env_variable("VOICE", job.voice_key, env_path)
         job.log += f"Updated FILE_NAME in {env_path}\n"
         job.log += f"Updated FPS to {fps} in {env_path}\n"
         job.log += f"Selected background music {job.music_track}\n"
+        job.log += f"Selected voice {job.voice_key}\n"
         job.save()
     except Exception as e:
         job.status = 'failed'

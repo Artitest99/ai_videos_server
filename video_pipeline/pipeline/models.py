@@ -22,6 +22,7 @@ class VideoJob(models.Model):
     render_required = models.BooleanField(default=False)
     render_start_script = models.CharField(max_length=80, default="create_video.py")
     music_track = models.CharField(max_length=40, default="1")
+    voice_key = models.CharField(max_length=40, default="Rachel_other")
     
     def __str__(self):
         return f"{self.file_name} - {self.status}"

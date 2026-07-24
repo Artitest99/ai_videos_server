@@ -120,6 +120,7 @@
                 <strong>We couldn't start the video yet.</strong> Please check the details below.
                 {% if form.non_field_errors %}<div class="field-errors">{{ form.non_field_errors }}</div>{% endif %}
                 {% if form.scenes_json.errors %}<div class="field-errors">{{ form.scenes_json.errors }}</div>{% endif %}
+                {% if form.voice_key.errors %}<div class="field-errors">{{ form.voice_key.errors }}</div>{% endif %}
             </div>
             {% endif %}
 
@@ -139,6 +140,17 @@
                     <p class="hint">30 FPS is recommended.</p>
                     {% if form.fps.errors %}<div class="field-errors">{{ form.fps.errors }}</div>{% endif %}
                 </div>
+            </div>
+            <div style="margin-top:20px">
+                <label for="voice_key">Voiceover voice</label>
+                <select id="voice_key" name="voice_key" required>
+                    {% for key, label in voice_choices %}
+                    <option value="{{ key }}" data-preview="{% url 'preview_voice' key %}" {% if selected_voice == key %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <p class="hint">This ElevenLabs voice will read every narrated scene. It has no effect when all scenes have no narration.</p>
+                <audio id="voice-preview" controls preload="none" style="width:100%;margin-top:10px"></audio>
+                <p id="voice-preview-status" class="hint">Press play to hear: “Hi, This is my voice. Do you find it fitting?” The first play may take a few seconds while the sample is generated.</p>
             </div>
             <div style="margin-top:20px">
                 <label for="music_track">Background music</label>
@@ -206,6 +218,24 @@
     musicSelect.addEventListener('change', updateMusicPreview);
     updateMusicPreview();
 
+    const voiceSelect = document.getElementById('voice_key');
+    const voicePreview = document.getElementById('voice-preview');
+    const voicePreviewStatus = document.getElementById('voice-preview-status');
+    function updateVoicePreview() {
+        const option = voiceSelect.options[voiceSelect.selectedIndex];
+        voicePreview.pause();
+        voicePreview.src = option ? option.dataset.preview : '';
+        voicePreviewStatus.textContent = 'Press play to hear: “Hi, This is my voice. Do you find it fitting?” The first play may take a few seconds while the sample is generated.';
+    }
+    voiceSelect.addEventListener('change', updateVoicePreview);
+    voicePreview.addEventListener('playing', () => {
+        voicePreviewStatus.textContent = `Playing the ${voiceSelect.options[voiceSelect.selectedIndex].text} sample.`;
+    });
+    voicePreview.addEventListener('error', () => {
+        voicePreviewStatus.textContent = 'This voice sample could not be loaded. Check the ElevenLabs API configuration and try again.';
+    });
+    updateVoicePreview();
+
     document.getElementById('upload-music').addEventListener('click', async () => {
         const nameInput = document.getElementById('new-music-name');
         const fileInput = document.getElementById('new-music-file');
@@ -238,7 +268,7 @@
         }
     });
 
-    function sceneCard(scene = {narration: '', prompt: '', use_original_audio: false, hold_after_seconds: 0}) {
+    function sceneCard(scene = {narration: '', prompt: '', use_original_audio: false, fit_with_borders: false, hold_after_seconds: 0, video_start_seconds: 0, video_end_seconds: null}) {
         const card = document.createElement('article');
         card.className = 'scene-card';
         card.innerHTML = `
@@ -272,9 +302,22 @@
                     <label><input class="use-original-audio" type="checkbox"> Use original video sound</label>
                     <p class="hint">Available for uploaded video scenes. Background music will be lowered while this sound plays.</p>
                 </div>
+                <div class="video-range-row" hidden style="grid-column:1/-1;padding:14px;background:var(--soft);border-radius:10px">
+                    <label>Choose the part of the video to use</label>
+                    <video class="video-range-preview" controls preload="metadata" style="display:block;width:min(100%,520px);max-height:320px;background:#111;border-radius:10px;margin:10px 0"></video>
+                    <div class="settings-grid">
+                        <div><label>Start (seconds)</label><input class="video-start-seconds" type="number" min="0" max="86400" step="0.01" value="0.00"></div>
+                        <div><label>End (seconds)</label><input class="video-end-seconds" type="number" min="0.01" max="86400" step="0.01"></div>
+                    </div>
+                    <p class="video-range-status hint">The preview loops only the selected range.</p>
+                </div>
+                <div class="fit-with-borders-row" hidden>
+                    <label><input class="fit-with-borders" type="checkbox"> Fit entire 16:9 media with black borders</label>
+                    <p class="hint">Shows the complete image or video without stretching or cropping it.</p>
+                </div>
                 <div>
                     <label>Time after scene (seconds)</label>
-                    <input class="hold-after-seconds" type="number" min="0" max="300" step="0.1" value="0">
+                    <input class="hold-after-seconds" type="number" min="0" max="300" step="0.01" value="0.00">
                     <p class="hint">The current scene keeps playing without narration before the next scene.</p>
                 </div>
             </div>`;
@@ -282,16 +325,99 @@
         card.querySelector('.prompt').value = scene.prompt || '';
         const mediaInput = card.querySelector('.media');
         const originalAudio = card.querySelector('.use-original-audio');
+        const fitWithBorders = card.querySelector('.fit-with-borders');
+        const fitRow = card.querySelector('.fit-with-borders-row');
+        const holdInput = card.querySelector('.hold-after-seconds');
+        const rangeRow = card.querySelector('.video-range-row');
+        const rangePreview = card.querySelector('.video-range-preview');
+        const rangeStatus = card.querySelector('.video-range-status');
+        const startInput = card.querySelector('.video-start-seconds');
+        const endInput = card.querySelector('.video-end-seconds');
         originalAudio.checked = Boolean(scene.use_original_audio);
-        card.querySelector('.hold-after-seconds').value = scene.hold_after_seconds || 0;
-        const updateOriginalAudioState = () => {
+        fitWithBorders.checked = Boolean(scene.fit_with_borders);
+        holdInput.value = Number(scene.hold_after_seconds || 0).toFixed(2);
+        startInput.value = Number(scene.video_start_seconds || 0).toFixed(2);
+        endInput.value = scene.video_end_seconds == null ? '' : Number(scene.video_end_seconds).toFixed(2);
+
+        function selectedRange() {
+            return {start: Number(startInput.value), end: Number(endInput.value)};
+        }
+
+        function updateRangePreview(updateSceneDuration = true) {
+            const {start, end} = selectedRange();
+            const sourceDuration = rangePreview.duration;
+            const valid = Number.isFinite(start) && Number.isFinite(end) && start >= 0 && end > start && (!Number.isFinite(sourceDuration) || end <= sourceDuration + 0.01);
+            if (!valid) {
+                rangeStatus.textContent = 'End must be after start and within the source video.';
+                return;
+            }
+            rangeStatus.textContent = `Previewing ${start.toFixed(2)}s to ${end.toFixed(2)}s (${(end - start).toFixed(2)} seconds).`;
+            if (updateSceneDuration) holdInput.value = (end - start).toFixed(2);
+            if (rangePreview.readyState >= 1) rangePreview.currentTime = start;
+        }
+
+        startInput.addEventListener('input', () => updateRangePreview(true));
+        endInput.addEventListener('input', () => updateRangePreview(true));
+        rangePreview.addEventListener('play', () => {
+            const {start, end} = selectedRange();
+            if (rangePreview.currentTime < start || rangePreview.currentTime >= end) rangePreview.currentTime = start;
+        });
+        rangePreview.addEventListener('timeupdate', () => {
+            const {start, end} = selectedRange();
+            if (Number.isFinite(start) && Number.isFinite(end) && rangePreview.currentTime >= end - 0.02) {
+                rangePreview.currentTime = start;
+            }
+        });
+
+        function setAspectOption(width, height) {
+            const is16by9 = height > 0 && Math.abs((width / height) - (16 / 9)) <= 0.03;
+            fitRow.hidden = !is16by9;
+            fitWithBorders.disabled = !is16by9;
+            if (!is16by9) fitWithBorders.checked = false;
+        }
+
+        function inspectSelectedMedia() {
             const file = mediaInput.files[0];
-            originalAudio.disabled = !file || !file.type.startsWith('video/');
+            const isVideo = Boolean(file && (file.type.startsWith('video/') || /\.(mp4|mov|avi|mkv|webm)$/i.test(file.name)));
+            originalAudio.disabled = !isVideo;
             if (originalAudio.disabled) originalAudio.checked = false;
-        };
-        mediaInput.addEventListener('change', updateOriginalAudioState);
-        updateOriginalAudioState();
-        card.querySelector('.use-narration').addEventListener('click', () => {
+            rangeRow.hidden = true;
+            rangePreview.pause();
+            rangePreview.removeAttribute('src');
+            fitRow.hidden = true;
+            fitWithBorders.disabled = true;
+            fitWithBorders.checked = false;
+            if (!file) return;
+            if (card._mediaObjectUrl) URL.revokeObjectURL(card._mediaObjectUrl);
+            const url = URL.createObjectURL(file);
+            card._mediaObjectUrl = url;
+            if (isVideo) {
+                rangeRow.hidden = false;
+                rangePreview.onloadedmetadata = () => {
+                    setAspectOption(rangePreview.videoWidth, rangePreview.videoHeight);
+                    if (Number.isFinite(rangePreview.duration)) {
+                        const fullDuration = Math.floor(rangePreview.duration * 100) / 100;
+                        startInput.max = fullDuration.toFixed(2);
+                        endInput.max = fullDuration.toFixed(2);
+                        startInput.value = '0.00';
+                        endInput.value = fullDuration.toFixed(2);
+                        updateRangePreview(true);
+                    }
+                };
+                rangePreview.src = url;
+            } else if (file.type.startsWith('image/')) {
+                startInput.value = '0.00';
+                endInput.value = '';
+                const image = new Image();
+                image.onload = () => { setAspectOption(image.naturalWidth, image.naturalHeight); URL.revokeObjectURL(url); };
+                image.onerror = () => URL.revokeObjectURL(url);
+                image.src = url;
+            } else {
+                URL.revokeObjectURL(url);
+            }
+        }
+        mediaInput.addEventListener('change', inspectSelectedMedia);
+        inspectSelectedMedia();        card.querySelector('.use-narration').addEventListener('click', () => {
             const narration = card.querySelector('.narration').value.trim();
             card.querySelector('.prompt').value = narration;
             card.querySelector('.prompt').focus();
@@ -335,7 +461,10 @@
             narration: card.querySelector('.narration').value,
             prompt: card.querySelector('.prompt').value,
             use_original_audio: card.querySelector('.use-original-audio').checked,
+            fit_with_borders: card.querySelector('.fit-with-borders').checked,
             hold_after_seconds: Number(card.querySelector('.hold-after-seconds').value || 0),
+            video_start_seconds: Number(card.querySelector('.video-start-seconds').value || 0),
+            video_end_seconds: card.querySelector('.video-end-seconds').value === '' ? null : Number(card.querySelector('.video-end-seconds').value),
         }));
         scenesInput.value = JSON.stringify(scenes);
     });

@@ -4,34 +4,14 @@ import json
 import time
 import numpy as np
 from moviepy.audio.AudioClip import AudioClip
-from config import BASE_DIR, FILE_NAME, require_setting
-
-VOICES = {
-    'rachel': 'EXAVITQu4vr4xnSDxMaL',
-    'adam': 'pNInz6obpgDQGcFmaJgB',
-    'josh': 'TxGEqnHWrfWFTfGW9XjX',
-    'antoni': 'ErXwobaYiN019PkySvjV',
-    'Dave': 'CYw3kZ02Hs0563khs1Fj',
-    'Charlie': 'IKne3meq5aSn9XLyUdCD',
-    'George': 'JBFqnCBsd6RMkjVDRZzb',
-    'Charlotte': 'XB0fDUnXU5powFXDhCwa',
-    'Vincent': 'S9WrLrqYPJzmQyWPWbZ5',
-    'Peter':'ZthjuvLPty3kTMaNKVKb',
-    'Brad':'gWaDC0oXAheKoZfljzuI',
-    'David':'asDeXBMC8hUkhqqL7agO',
-    'Michael':'uju3wxzG5OhpWcoi3SMy',
-    'Liam':'TX3LPaxmHKxFdv7VOQHJ',
-    'Mike_Adams':'wgKk07zoxxDRH18KKNOf',
-    'Daniel_R':'ZMK5OD2jmsdse3EKE4W5',
-    'Rachel_other':'ZT9u07TYPVl83ejeLakq',
-    'Adam':'ookcfIYgQDpBT5ueX6gr'
-}
+from config import BASE_DIR, FILE_NAME, VOICE, require_setting
+from voice_config import resolve_voice_id
 
 # === CONFIG ===
 #pelegha2000:  sk_183570bf426a3dd0a30e06958314e3b4bf28ac1c5433b8c1 
 #ali: sk_33ce6496023f05bb58f67185b5752387d1ca270c7efe7aa1
 API_KEY = None
-VOICE_ID = VOICES.get('Rachel_other')
+VOICE_ID = resolve_voice_id(VOICE)
 TEXT_FILE = BASE_DIR / 'scripts' / f'{FILE_NAME}.txt'
 OUTPUT_FILE = BASE_DIR / 'assets' / 'voiceovers' / f'{FILE_NAME}.mp3'
 TIMING_FILE = BASE_DIR / 'assets' / 'voiceovers' / f'captions_{FILE_NAME}.json'
@@ -65,6 +45,7 @@ if not script.strip():
     raise SystemExit(0)
 
 API_KEY = require_setting("ELEVENLABS_API_KEY")
+print(f"Selected voice: {VOICE}")
 
 # === APPROACH: REGULAR TTS + HISTORY RETRIEVAL ===
 # Step 1: Generate the audio first

@@ -13,4 +13,5 @@ urlpatterns = [
     path('job/<int:job_id>/scene/<int:scene_index>/media/', views.scene_media, name='scene_media'),
     path('music/upload/', views.upload_music, name='upload_music'),
     path('music/<str:track_id>/', views.preview_music, name='preview_music'),
+    path('voice/<str:voice_key>/sample/', views.preview_voice, name='preview_voice'),
 ]

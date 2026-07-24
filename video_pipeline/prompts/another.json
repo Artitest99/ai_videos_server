@@ -1,0 +1,12 @@
+[
+  {
+    "filename": "scene_01.png",
+    "prompt": "",
+    "narration": "This is a narration test. I hope it works.",
+    "use_original_audio": false,
+    "fit_with_borders": false,
+    "hold_after_seconds": 0.0,
+    "video_start_seconds": 0.0,
+    "video_end_seconds": null
+  }
+]
